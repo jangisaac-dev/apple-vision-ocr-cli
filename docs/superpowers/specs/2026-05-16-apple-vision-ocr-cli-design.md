@@ -263,9 +263,10 @@ Read:
 
 ```bash
 sed -n '1,240p' docs/superpowers/specs/2026-05-16-apple-vision-ocr-cli-design.md
+sed -n '1,220p' GOAL_PROMPT.md
 ```
 
-Then create an implementation plan from this design before writing code.
+Then paste the prompt from `GOAL_PROMPT.md` into the new Codex session and create an implementation plan from this design before writing code.
 
 Suggested first implementation steps:
 
@@ -287,4 +288,3 @@ Completion criteria for v1:
 - The output PDF visually matches the input.
 - The output PDF text can be selected and copied.
 - The original PDF is unchanged.
-
