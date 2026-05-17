@@ -1,8 +1,8 @@
 # VOCR Finder GUI And Menubar Progress Design
 
 Date: 2026-05-17
-Status: Design for review
-Project path: `/Volumes/ssd/simple_tools/apple-vision-ocr-cli`
+Status: Implemented baseline. Kept as product and UX reference.
+Project path: `<repo>`
 
 ## Objective
 
@@ -95,6 +95,7 @@ It shows:
 - `검색 가능한 PDF 생성` checkbox;
 - start button;
 - cancel button;
+- quit button shown when OCR is not running;
 - progress text for detailed status.
 
 Default selection:
@@ -133,6 +134,8 @@ completed pages / total pages
 ```
 
 The OCR core reports page completion after each page is recognized and added to the output result. Writing PDF/TXT output can be represented as a final short stage after page OCR reaches 100%.
+
+The `동시 OCR 페이지 수` control applies to pages inside the current PDF, not to simultaneously running PDF files. Selected PDFs are processed one file at a time while the current file can keep multiple page OCR requests active up to the selected limit.
 
 ## Menu Bar Menu
 
@@ -175,7 +178,7 @@ Optional useful menu items:
 Completion behavior:
 
 - On success, show `VOCR 완료` briefly in the menu bar, send a macOS notification, then remove the status item and quit the app after a short delay unless the window is still open.
-- On failure, show `VOCR 실패` and keep the status item long enough for the user to open details or logs.
+- On cancel or failure, show the terminal state briefly, stop OCR at the next page boundary, and quit the app after a short delay so no VOCR process is left running.
 
 ## Pause, Resume, Cancel
 

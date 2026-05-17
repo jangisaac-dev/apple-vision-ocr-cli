@@ -1,8 +1,8 @@
 # Apple Vision OCR CLI Design
 
 Date: 2026-05-16
-Status: Approved for handoff documentation. Implementation has not started.
-Project path: `/Volumes/ssd/simple_tools/apple-vision-ocr-cli`
+Status: Implemented baseline. Kept as the original v1 product contract.
+Project path: `<repo>`
 
 ## Objective
 
@@ -149,6 +149,9 @@ Default settings:
 Expose `--lang ko,en` as a comma-separated list. The parser should trim whitespace and reject an empty language list.
 
 Expose `--recognition-level fast|accurate`. Default remains `accurate`.
+Implementation note added 2026-05-17: Apple Vision's `fast` level does not support `ko-KR` on the tested macOS version, so Korean/default `ko,en` runs must stay on `accurate`; `fast` is valid only for supported language sets such as English.
+Implementation note added 2026-05-17: Korean-safe speed work should use `accurate` plus page parallelism and configurable render scale, not Vision `fast`.
+Implementation note added 2026-05-17: Default page parallelism is 4 and the page scheduler uses a bounded worker pool to keep OCR slots filled more consistently on machines with available compute.
 
 ## PDF Text Overlay Strategy
 
@@ -242,7 +245,7 @@ Use short command timeouts during testing. Do not leave long-running Swift, Pyth
 
 Follow these project rules during implementation:
 
-- Keep all work inside `/Volumes/ssd/simple_tools/apple-vision-ocr-cli`.
+- Keep all work inside `<repo>`.
 - Do not modify `/Applications/OwlOCR.app`.
 - Do not depend on OwlOCR internals.
 - Prefer a pure Swift Package.
@@ -256,7 +259,7 @@ Follow these project rules during implementation:
 Start in:
 
 ```bash
-cd /Volumes/ssd/simple_tools/apple-vision-ocr-cli
+cd <repo>
 ```
 
 Read:

@@ -1,46 +1,43 @@
 # Goal Prompt
 
-Paste this into a fresh Codex session opened at:
-
-```bash
-cd /Volumes/ssd/simple_tools/apple-vision-ocr-cli
-```
-
-Prompt:
+Paste this into a fresh Codex session opened at the repository root.
 
 ```text
-Goal: Implement v1 of the Apple Vision OCR CLI in this repository.
+Goal: Continue the Apple Vision OCR CLI / VOCR project from the current completed Apple Vision baseline.
 
-You are starting in /Volumes/ssd/simple_tools/apple-vision-ocr-cli. First read README.md and docs/superpowers/specs/2026-05-16-apple-vision-ocr-cli-design.md. Treat that design as the approved source of truth.
+Start by reading README.md, CURRENT_STATUS.md, and docs/future-ocr-backends.md. Treat Apple Vision accurate mode as the quality-safe default for Korean/default OCR unless a new benchmark proves otherwise.
 
-Build a Swift-only macOS CLI that accepts one PDF and creates a sibling searchable PDF named like input_ocr.pdf. The output must preserve the visual appearance of the original PDF and add copyable/searchable OCR text using Apple Vision. Default OCR languages are ko,en, with a --lang override. Do not add a GUI. Do not modify /Applications/OwlOCR.app. Do not depend on OwlOCR internals. Do not add Python, Node, uv, or external PDF runtime dependencies for v1.
+Current product shape:
+- Swift-only macOS package.
+- apple-vision-ocr CLI.
+- VOCR Finder-launched app with menu bar progress.
+- Finder Quick Action named Apple Vision OCR.
+- Default OCR languages are ko,en.
+- Korean/default OCR must not use Apple Vision fast mode because fast mode does not support ko-KR on the tested macOS version.
+- Normal output should remain searchable PDF and/or TXT without modifying the original PDF.
 
-Before implementation, create a concise implementation plan from the design. Then implement inside this repository only.
-
-Minimum implementation expectations:
-- Swift Package executable.
-- CLI options for input PDF, --output, --lang, --recognition-level, --dry-run, --help, and --version.
-- Safe default output path: input.pdf -> input_ocr.pdf.
-- Refuse accidental overwrites in v1.
-- PDF page rendering for Vision OCR.
-- Apple Vision text recognition with default languages ko,en.
-- Geometry mapping from Vision normalized bounding boxes to PDF page coordinates.
-- New PDF writer that draws original pages and overlays invisible/copyable text.
-- Unit tests for output path derivation, language parsing, CLI validation, and geometry mapping.
-- Verification that the generated PDF opens, visually matches the input, and has selectable/copyable text.
-
-Operational constraints:
-- Keep all changes inside this repository.
+Important implementation constraints:
+- Keep work inside this repository.
+- Avoid adding Python, Node, uv, or external OCR runtimes to the product path unless the task is explicitly an experimental benchmark.
 - Use short command timeouts.
-- Do not leave Swift, Python, Node, uv, skycomputeruse, or helper processes running.
-- If temporary processes are started, inspect and clean them up before final reporting.
+- Do not leave Swift, Python, Node, uv, skycomputeruse, Ollama, MLX, Tesseract, or helper processes running.
+- Before final reporting, inspect and clean up task-created processes.
 
-Completion criteria:
+Current speed/quality decision:
+- Apple Vision accurate with page parallelism 8 remains the default.
+- Render scale 2.0 is the quality default.
+- Render scale 1.5 and 1.25 are operator knobs, not a replacement for accurate mode.
+- Tesseract is only a possible rough-draft backend with a visible quality warning.
+- RapidOCR, PaddleOCR, and local GLM-OCR MLX should not be default dependencies based on current benchmarks.
+
+Before changing OCR backend behavior:
+- Read docs/benchmarks/2026-05-17-ocr-model-candidates.md.
+- Run a same-document benchmark against the Apple Vision reference.
+- Preserve quality as an acceptance criterion; speed-only output is not enough.
+
+Completion criteria for future work:
 - swift test passes.
-- swift build passes.
-- A sample PDF run produces sample_ocr.pdf.
-- Original PDF remains unchanged.
-- Output PDF text is selectable/copyable.
-- Git working tree status is reported at the end.
+- swift build or swift build -c release passes.
+- Documentation is updated if behavior or benchmark decisions change.
+- Git working tree status and process cleanup status are reported at the end.
 ```
-
