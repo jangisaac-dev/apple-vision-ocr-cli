@@ -13,8 +13,9 @@ The current goal is:
 2. Prevent unsupported fast-mode Korean output.
 3. Improve Korean OCR throughput through safe knobs:
    - page-level parallelism;
-   - lower PDF render scale for optional speed-balanced runs.
-4. Benchmark those safe knobs before deciding whether an external OCR engine is justified.
+   - lower PDF render scale for optional speed-balanced runs;
+   - text-only split workers for large documents.
+4. Keep searchable PDF on the existing single-process writer path until PDF merge/order/geometry validation is designed and benchmarked.
 
 ## Implemented
 
@@ -29,6 +30,7 @@ The current goal is:
 - The core page scheduler uses a bounded worker pool so available page slots stay filled until the active PDF is exhausted.
 - The Apple Vision page pipeline now decouples PDF rendering from Vision recognition with a signaled bounded render-ahead queue. On the 398-page Korean reference PDF at render 2.0 + accurate, the final single-process default measured `real 215.61s` versus the earlier pp16 baseline `real 229.48s`, with identical text output hash.
 - CLI text-only OCR now supports `--page-range START-END` and `--split-workers N`. The 398-page Korean reference PDF measured `real 66.43s` with `--split-workers 4 --page-parallelism 4 --render-scale 2.0`, while preserving the baseline text SHA-256 exactly.
+- Searchable PDF split-worker support is intentionally deferred. The safe design would run child processes against the original PDF with non-overlapping page ranges, write per-range searchable PDFs, merge them in order, and verify page count, page order, page geometry, and extracted searchable text. This was reviewed but not implemented in this pass.
 
 ## Fresh Verification
 
@@ -36,8 +38,11 @@ The current goal is:
 - 2026-05-18: `env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift build -c release` passed after rerunning outside the Codex sandbox because SwiftPM manifest sandboxing failed with `sandbox-exec: sandbox_apply: Operation not permitted`.
 - 2026-05-29: `env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift test --filter SearchablePDFPipelineParallelismTests` passed: 2 tests, 0 failures.
 - 2026-05-29: `env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift build -c release` passed after rerunning outside the Codex sandbox.
+- 2026-05-29: `env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift test` passed after merge: 80 tests, 0 failures.
+- 2026-05-29: `env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift build -c release` passed after merge.
 - 2026-05-29: Full 398-page reference run passed with render 2.0 + accurate + pp16, text-only output, `real 215.61`, and SHA-256 matching the earlier pp16 baseline text output.
 - 2026-05-29: Full 398-page split-worker reference run passed with render 2.0 + accurate + `--split-workers 4 --page-parallelism 4`, text-only output, `real 66.43`, and SHA-256 matching the earlier pp16 baseline text output.
+- 2026-05-29: Split-worker output was compared with the baseline using SHA-256, `cmp`, and `wc -l -c`; both files were `11446` lines and `643531` bytes.
 
 ## Installed Artifact Verification
 
@@ -81,6 +86,8 @@ Quality decision:
 - Page parallelism 8 is the best measured Apple Vision default. Page parallelism 16 is allowed for experiments but was slower than 8 on this benchmark.
 
 ## Next Validation Target
+
+If searchable PDF split-workers are resumed later, implement them as a separate PDF-specific merge path with explicit validation. Do not reuse the rejected PDFKit chunk-rewrite approach because it changed OCR output in testing.
 
 If a draft-speed mode is desired, add it explicitly as a separate Tesseract backend with a clear quality warning rather than silently mixing it into the default Apple Vision path.
 

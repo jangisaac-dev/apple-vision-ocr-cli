@@ -35,6 +35,8 @@ swift run apple-vision-ocr input.pdf --lang ko,en
 swift run apple-vision-ocr input.pdf --recognition-level accurate
 swift run apple-vision-ocr input.pdf --recognition-level accurate --page-parallelism 8
 swift run apple-vision-ocr input.pdf --recognition-level accurate --page-parallelism 8 --render-scale 1.5
+swift run apple-vision-ocr input.pdf --txt-only --page-range 1-100
+swift run apple-vision-ocr input.pdf --txt-only --split-workers 4 --page-parallelism 4 --render-scale 2.0
 swift run apple-vision-ocr english.pdf --lang en --recognition-level fast --page-parallelism 8
 swift run apple-vision-ocr input.pdf --dry-run
 swift run apple-vision-ocr --help
@@ -64,9 +66,13 @@ Speed controls:
 --recognition-level accurate|fast   accurate is the default; fast only supports a limited language set
 --page-parallelism 1-16             OCR up to N pages from the current PDF at once; default is 8
 --render-scale 1.25|1.5|2.0         2.0 quality, 1.5 balanced Korean speed, 1.25 compact
+--page-range START-END              text-only OCR over a 1-based page range
+--split-workers 2-8                 split text-only OCR across child processes, then join text in order
 ```
 
 Apple Vision's `fast` recognition level does not support Korean (`ko-KR`) on this macOS version. Korean/default `ko,en` OCR should use `accurate` plus `--page-parallelism` and, when speed matters more than maximum scan fidelity, `--render-scale 1.5`.
+
+For large text-only Korean jobs where quality must stay on `accurate` + `--render-scale 2.0`, prefer `--split-workers 4 --page-parallelism 4`. On the 398-page reference PDF this measured `66.43s` versus the previous `229.48s` baseline, with byte-for-byte identical text output. `--split-workers` and `--page-range` are currently text-only; searchable PDF output still uses the single-process PDF writer path.
 
 ## VOCR Finder GUI
 
@@ -146,6 +152,7 @@ Future OCR backend experiments and rejected speed candidates are summarized in:
 ```text
 docs/future-ocr-backends.md
 docs/benchmarks/2026-05-17-ocr-model-candidates.md
+docs/benchmarks/2026-05-29-vision-pipeline-render-ahead.md
 ```
 
 ## Development

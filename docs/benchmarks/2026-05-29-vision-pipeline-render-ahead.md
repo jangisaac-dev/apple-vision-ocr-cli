@@ -86,3 +86,19 @@ New CLI options added for the successful speed path:
 
 - `--page-range START-END` for text-only OCR over a 1-based page range.
 - `--split-workers N` for text-only multi-process OCR over non-overlapping page ranges.
+
+## Searchable PDF Follow-Up Decision
+
+Searchable PDF split-workers are deferred for now.
+
+The likely implementation shape is similar to the text-only path, but the merge step is materially harder:
+
+1. Run each child process against the original PDF, not a rewritten chunk PDF.
+2. Give each child a non-overlapping page range.
+3. Write one searchable PDF per range.
+4. Merge the child PDFs in page order.
+5. Verify page count, page order, page geometry, and extracted searchable text.
+
+This should not be enabled by simply relaxing `--page-range` validation for PDF output. The writer currently emits only the selected pages it receives, and PDF outputs are not byte-for-byte comparable because metadata and object ordering can change. Validation needs `pdfinfo`, `pdftotext`, page dimensions, and sampled visual/geometry checks.
+
+The existing searchable PDF path was smoke-tested outside the Codex sandbox on `Samples/sample.pdf` and `Samples/sample_ocr.pdf`. Both completed and produced extractable text. Inside the Codex sandbox, CoreGraphics PDF output failed with `Foundation._GenericObjCError error 0`, so searchable PDF runtime checks should be run outside the sandbox when validating this path.
