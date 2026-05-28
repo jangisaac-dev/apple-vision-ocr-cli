@@ -1,6 +1,6 @@
 # Current Status
 
-Updated: 2026-05-18
+Updated: 2026-05-29
 
 ## Current Objective
 
@@ -27,11 +27,17 @@ The current goal is:
   - `한국어 속도 균형 (1.5x)`
   - `빠른 초안 (1.25x)`
 - The core page scheduler uses a bounded worker pool so available page slots stay filled until the active PDF is exhausted.
+- The Apple Vision page pipeline now decouples PDF rendering from Vision recognition with a signaled bounded render-ahead queue. On the 398-page Korean reference PDF at render 2.0 + accurate, the final single-process default measured `real 215.61s` versus the earlier pp16 baseline `real 229.48s`, with identical text output hash.
+- CLI text-only OCR now supports `--page-range START-END` and `--split-workers N`. The 398-page Korean reference PDF measured `real 66.43s` with `--split-workers 4 --page-parallelism 4 --render-scale 2.0`, while preserving the baseline text SHA-256 exactly.
 
 ## Fresh Verification
 
 - 2026-05-18: `env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift test` passed: 75 tests, 0 failures.
 - 2026-05-18: `env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift build -c release` passed after rerunning outside the Codex sandbox because SwiftPM manifest sandboxing failed with `sandbox-exec: sandbox_apply: Operation not permitted`.
+- 2026-05-29: `env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift test --filter SearchablePDFPipelineParallelismTests` passed: 2 tests, 0 failures.
+- 2026-05-29: `env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift build -c release` passed after rerunning outside the Codex sandbox.
+- 2026-05-29: Full 398-page reference run passed with render 2.0 + accurate + pp16, text-only output, `real 215.61`, and SHA-256 matching the earlier pp16 baseline text output.
+- 2026-05-29: Full 398-page split-worker reference run passed with render 2.0 + accurate + `--split-workers 4 --page-parallelism 4`, text-only output, `real 66.43`, and SHA-256 matching the earlier pp16 baseline text output.
 
 ## Installed Artifact Verification
 

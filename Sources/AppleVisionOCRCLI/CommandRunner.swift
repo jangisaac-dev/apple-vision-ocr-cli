@@ -7,17 +7,20 @@ public final class CommandRunner {
     private let stdout: (String) -> Void
     private let stderr: (String) -> Void
     private let pipeline: SearchablePDFPipeline
+    private let executableURL: URL
 
     public init(
         stdout: @escaping (String) -> Void = { print($0) },
         stderr: @escaping (String) -> Void = { message in
             FileHandle.standardError.write(Data((message + "\n").utf8))
         },
-        pipeline: SearchablePDFPipeline = SearchablePDFPipeline()
+        pipeline: SearchablePDFPipeline = SearchablePDFPipeline(),
+        executableURL: URL? = nil
     ) {
         self.stdout = stdout
         self.stderr = stderr
         self.pipeline = pipeline
+        self.executableURL = executableURL ?? Self.defaultExecutableURL()
     }
 
     public func run(arguments: [String]) -> ExitCode {
@@ -42,8 +45,16 @@ public final class CommandRunner {
                     return .success
                 }
 
-                try pipeline.run(options: options) { [stderr] message in
-                    stderr(message)
+                if options.splitWorkers != nil {
+                    try ChunkedTextOCRRunner(
+                        options: options,
+                        executableURL: executableURL,
+                        stderr: stderr
+                    ).run()
+                } else {
+                    try pipeline.run(options: options) { [stderr] message in
+                        stderr(message)
+                    }
                 }
                 if let outputURL = options.outputURL {
                     stdout(outputURL.path)
@@ -64,7 +75,7 @@ public final class CommandRunner {
 
     private static let helpText = """
     Usage:
-      apple-vision-ocr input.pdf [--output output.pdf] [--txt|--txt-output output.txt|--txt-only] [--page-breaks] [--lang ko,en] [--recognition-level accurate|fast] [--page-parallelism 1-16] [--render-scale 1.25|1.5|2.0] [--dry-run]
+      apple-vision-ocr input.pdf [--output output.pdf] [--txt|--txt-output output.txt|--txt-only] [--page-breaks] [--lang ko,en] [--recognition-level accurate|fast] [--page-parallelism 1-16] [--render-scale 1.25|1.5|2.0] [--page-range START-END] [--split-workers 2-8] [--dry-run]
       apple-vision-ocr --help
       apple-vision-ocr --version
 
@@ -78,10 +89,30 @@ public final class CommandRunner {
       --recognition-level VALUE  accurate or fast. Defaults to accurate. Fast supports a limited language set.
       --page-parallelism N       OCR up to N pages at once. Defaults to 8.
       --render-scale N           PDF render scale: 2.0 quality, 1.5 balanced Korean speed, 1.25 compact.
+      --page-range START-END     OCR only a 1-based page range. Requires --txt-only.
+      --split-workers N          Split text-only OCR across N child processes. Requires --txt-only.
       --dry-run                  Validate arguments and print the output path without writing.
       --help                     Show this help text.
       --version                  Show the version.
     """
+
+    private static func defaultExecutableURL() -> URL {
+        let executable = CommandLine.arguments.first ?? "apple-vision-ocr"
+        if executable.contains("/") {
+            return URL(fileURLWithPath: executable).standardizedFileURL
+        }
+
+        let fileManager = FileManager.default
+        let pathValue = ProcessInfo.processInfo.environment["PATH"] ?? ""
+        for directory in pathValue.split(separator: ":") {
+            let candidate = URL(fileURLWithPath: String(directory)).appendingPathComponent(executable)
+            if fileManager.isExecutableFile(atPath: candidate.path) {
+                return candidate.standardizedFileURL
+            }
+        }
+
+        return URL(fileURLWithPath: executable)
+    }
 }
 
 enum CLICommand {

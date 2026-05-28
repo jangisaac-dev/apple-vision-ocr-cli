@@ -10,6 +10,8 @@ public struct CLIOptions {
     public let recognitionLevel: OCRRecognitionLevel
     public let pageParallelism: OCRJobParallelism
     public let renderScale: OCRRenderScale
+    public let pageRange: ClosedRange<Int>?
+    public let splitWorkers: Int?
     public let dryRun: Bool
 
     public static func parse(_ arguments: [String]) throws -> CLIOptions {
@@ -27,6 +29,8 @@ public struct CLIOptions {
         var recognitionLevel = OCRRecognitionLevel.accurate
         var pageParallelism = OCRJobParallelism.default
         var renderScale = OCRRenderScale.quality
+        var pageRange: ClosedRange<Int>?
+        var splitWorkers: Int?
         var dryRun = false
 
         var index = 0
@@ -58,6 +62,12 @@ public struct CLIOptions {
             case "--render-scale":
                 let value = try valueAfterOption(argument, arguments: arguments, index: &index)
                 renderScale = try OCRRenderScale.parse(value)
+            case "--page-range":
+                let value = try valueAfterOption(argument, arguments: arguments, index: &index)
+                pageRange = try parsePageRange(value)
+            case "--split-workers":
+                let value = try valueAfterOption(argument, arguments: arguments, index: &index)
+                splitWorkers = try parseSplitWorkers(value)
             case "--dry-run":
                 dryRun = true
             case "--help", "-h", "--version":
@@ -91,6 +101,19 @@ public struct CLIOptions {
         guard !includePageBreaks || wantsDefaultTextOutput || wantsTextOnlyOutput || txtOutputURL != nil else {
             throw AppleVisionOCRError.invalidUsage("--page-breaks requires --txt, --txt-only, or --txt-output")
         }
+        if splitWorkers != nil {
+            guard wantsTextOnlyOutput else {
+                throw AppleVisionOCRError.invalidUsage("--split-workers requires --txt-only")
+            }
+            guard !includePageBreaks else {
+                throw AppleVisionOCRError.invalidUsage("--split-workers cannot be combined with --page-breaks")
+            }
+        }
+        if pageRange != nil {
+            guard wantsTextOnlyOutput else {
+                throw AppleVisionOCRError.invalidUsage("--page-range requires --txt-only")
+            }
+        }
 
         let resolvedOutputURL = try wantsTextOnlyOutput
             ? nil
@@ -114,6 +137,8 @@ public struct CLIOptions {
             recognitionLevel: recognitionLevel,
             pageParallelism: pageParallelism,
             renderScale: renderScale,
+            pageRange: pageRange,
+            splitWorkers: splitWorkers,
             dryRun: dryRun
         )
     }
@@ -206,6 +231,25 @@ private func parsePageParallelism(_ rawValue: String) throws -> OCRJobParallelis
             "page parallelism must be between \(OCRJobParallelism.minimumCount) and \(OCRJobParallelism.maximumCount)"
         )
     }
+}
+
+private func parseSplitWorkers(_ rawValue: String) throws -> Int {
+    guard let count = Int(rawValue), (2...8).contains(count) else {
+        throw AppleVisionOCRError.invalidUsage("split workers must be between 2 and 8")
+    }
+    return count
+}
+
+private func parsePageRange(_ rawValue: String) throws -> ClosedRange<Int> {
+    let parts = rawValue.split(separator: "-", omittingEmptySubsequences: false)
+    guard parts.count == 2,
+          let start = Int(parts[0]),
+          let end = Int(parts[1]),
+          start > 0,
+          end >= start else {
+        throw AppleVisionOCRError.invalidUsage("page range must be START-END")
+    }
+    return start...end
 }
 
 private func validateRecognitionLanguages(

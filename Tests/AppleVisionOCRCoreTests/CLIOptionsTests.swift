@@ -25,6 +25,8 @@ final class CLIOptionsTests: XCTestCase {
         XCTAssertEqual(options.recognitionLevel, .accurate)
         XCTAssertEqual(options.pageParallelism, .default)
         XCTAssertEqual(options.renderScale, .quality)
+        XCTAssertNil(options.pageRange)
+        XCTAssertNil(options.splitWorkers)
         XCTAssertFalse(options.dryRun)
     }
 
@@ -146,6 +148,28 @@ final class CLIOptionsTests: XCTestCase {
         XCTAssertEqual(options.outputMode, .plainText)
     }
 
+    func testParsesSplitWorkersForTextOnly() throws {
+        let options = try CLIOptions.parse([
+            "/tmp/input.pdf",
+            "--txt-only",
+            "--txt-output", "/tmp/custom.txt",
+            "--split-workers", "4"
+        ])
+
+        XCTAssertEqual(options.splitWorkers, 4)
+    }
+
+    func testParsesPageRangeForTextOnly() throws {
+        let options = try CLIOptions.parse([
+            "/tmp/input.pdf",
+            "--txt-only",
+            "--txt-output", "/tmp/custom.txt",
+            "--page-range", "101-200"
+        ])
+
+        XCTAssertEqual(options.pageRange, 101...200)
+    }
+
     func testPageBreaksRequireTextOutput() {
         XCTAssertThrowsError(try CLIOptions.parse([
             "/tmp/input.pdf",
@@ -160,6 +184,37 @@ final class CLIOptionsTests: XCTestCase {
             "/tmp/input.pdf",
             "--txt-only",
             "--output", "/tmp/custom.pdf"
+        ])) { error in
+            XCTAssertEqual((error as? AppleVisionOCRError)?.exitCode, .invalidUsage)
+        }
+    }
+
+    func testSplitWorkersRequireTextOnly() {
+        XCTAssertThrowsError(try CLIOptions.parse([
+            "/tmp/input.pdf",
+            "--txt",
+            "--split-workers", "4"
+        ])) { error in
+            XCTAssertEqual((error as? AppleVisionOCRError)?.exitCode, .invalidUsage)
+        }
+    }
+
+    func testSplitWorkersRejectPageBreaks() {
+        XCTAssertThrowsError(try CLIOptions.parse([
+            "/tmp/input.pdf",
+            "--txt-only",
+            "--page-breaks",
+            "--split-workers", "4"
+        ])) { error in
+            XCTAssertEqual((error as? AppleVisionOCRError)?.exitCode, .invalidUsage)
+        }
+    }
+
+    func testPageRangeRequiresTextOnly() {
+        XCTAssertThrowsError(try CLIOptions.parse([
+            "/tmp/input.pdf",
+            "--txt",
+            "--page-range", "1-10"
         ])) { error in
             XCTAssertEqual((error as? AppleVisionOCRError)?.exitCode, .invalidUsage)
         }

@@ -1,6 +1,71 @@
 import CoreGraphics
 import Foundation
 
+private struct RenderedPageQueueItem {
+    let pageNumber: Int
+    let rendered: RenderedPDFPage
+}
+
+private final class BoundedRenderedPageQueue {
+    private let condition = NSCondition()
+    private let capacity: Int
+    private var items: [RenderedPageQueueItem] = []
+    private var finished = false
+    private var canceled = false
+
+    init(capacity: Int) {
+        self.capacity = max(1, capacity)
+    }
+
+    func enqueue(_ item: RenderedPageQueueItem, shouldCancel: () -> Bool) -> Bool {
+        condition.lock()
+        defer { condition.unlock() }
+
+        while items.count >= capacity && !finished && !canceled && !shouldCancel() {
+            condition.wait()
+        }
+
+        guard !finished, !canceled, !shouldCancel() else {
+            return false
+        }
+
+        items.append(item)
+        condition.signal()
+        return true
+    }
+
+    func dequeue(shouldCancel: () -> Bool) -> RenderedPageQueueItem? {
+        condition.lock()
+        defer { condition.unlock() }
+
+        while items.isEmpty && !finished && !canceled && !shouldCancel() {
+            condition.wait()
+        }
+
+        guard !canceled, !shouldCancel(), !items.isEmpty else {
+            return nil
+        }
+
+        let item = items.removeFirst()
+        condition.signal()
+        return item
+    }
+
+    func finish() {
+        condition.withLock {
+            finished = true
+            condition.broadcast()
+        }
+    }
+
+    func cancel() {
+        condition.withLock {
+            canceled = true
+            condition.broadcast()
+        }
+    }
+}
+
 public final class SearchablePDFPipeline {
     public typealias ProgressHandler = (OCRProgressEvent) -> Void
 
@@ -43,7 +108,8 @@ public final class SearchablePDFPipeline {
             languages: options.languages,
             recognitionLevel: options.recognitionLevel,
             pageParallelism: options.pageParallelism,
-            renderScale: options.renderScale
+            renderScale: options.renderScale,
+            pageRange: options.pageRange
         )
 
         try run(job: jobOptions, control: OCRJobControl()) { event in
@@ -71,6 +137,7 @@ public final class SearchablePDFPipeline {
         guard document.numberOfPages > 0 else {
             throw AppleVisionOCRError.pdfFailure("input PDF has no pages: \(options.inputURL.path)")
         }
+        let pageNumbers = try selectedPageNumbers(for: options, totalPageCount: document.numberOfPages)
 
         let textPages = try pagesWithExistingTextIfNeeded(for: options)
         if !textPages.isEmpty {
@@ -78,14 +145,14 @@ public final class SearchablePDFPipeline {
                 stage: .starting,
                 currentFile: options.inputURL.lastPathComponent,
                 completedPages: 0,
-                totalPages: document.numberOfPages,
+                totalPages: pageNumbers.count,
                 message: "Existing selectable text found; rasterizing affected pages"
             ))
         }
 
         let pageLimiter = externalPageLimiter ?? OCRParallelismLimiter(parallelism: options.pageParallelism)
         let pageResults = try recognizePages(
-            pageCount: document.numberOfPages,
+            pageNumbers: pageNumbers,
             options: options,
             textPages: textPages,
             control: control,
@@ -100,8 +167,8 @@ public final class SearchablePDFPipeline {
         progress(OCRProgressEvent(
             stage: .writingOutput,
             currentFile: options.inputURL.lastPathComponent,
-            completedPages: document.numberOfPages,
-            totalPages: document.numberOfPages,
+            completedPages: pageNumbers.count,
+            totalPages: pageNumbers.count,
             message: "Writing output"
         ))
 
@@ -119,14 +186,14 @@ public final class SearchablePDFPipeline {
         progress(OCRProgressEvent(
             stage: .completed,
             currentFile: options.inputURL.lastPathComponent,
-            completedPages: document.numberOfPages,
-            totalPages: document.numberOfPages,
+            completedPages: pageNumbers.count,
+            totalPages: pageNumbers.count,
             message: "Completed OCR"
         ))
     }
 
     private func recognizePages(
-        pageCount: Int,
+        pageNumbers: [Int],
         options: OCRJobOptions,
         textPages: Set<Int>,
         control: OCRJobControl,
@@ -136,24 +203,21 @@ public final class SearchablePDFPipeline {
         let resultLock = NSLock()
         let errorLock = NSLock()
         let pageLock = NSLock()
-        let group = DispatchGroup()
-        let workerQueue = DispatchQueue(
-            label: "dev.oth.apple-vision-ocr.page-workers",
-            qos: .userInitiated,
-            attributes: .concurrent
-        )
-        var pageResults = Array<PDFPageOCRResult?>(repeating: nil, count: pageCount)
+        var pageResults = Array<PDFPageOCRResult?>(repeating: nil, count: pageNumbers.count)
         var completedPages = 0
-        var nextPageNumber = 1
+        var nextPageIndex = 0
         var firstError: Error?
+        let pageResultIndexes = Dictionary(uniqueKeysWithValues: pageNumbers.enumerated().map { ($0.element, $0.offset) })
+        let queueCapacity = positiveIntegerEnvironmentValue("APPLE_VISION_OCR_QUEUE_CAPACITY") ?? 32
+        let renderedQueue = BoundedRenderedPageQueue(capacity: queueCapacity)
 
         func nextPage() -> Int? {
             pageLock.withLock {
-                guard nextPageNumber <= pageCount, !control.isCanceled else {
+                guard nextPageIndex < pageNumbers.count, !control.isCanceled else {
                     return nil
                 }
-                let pageNumber = nextPageNumber
-                nextPageNumber += 1
+                let pageNumber = pageNumbers[nextPageIndex]
+                nextPageIndex += 1
                 return pageNumber
             }
         }
@@ -164,30 +228,105 @@ public final class SearchablePDFPipeline {
                     firstError = error
                     control.cancel()
                     pageLimiter.wakeWaiters()
+                    renderedQueue.cancel()
                 }
             }
         }
 
-        let workerCount = min(pageCount, OCRJobParallelism.maximumCount)
-        for _ in 0..<workerCount {
-            if control.isCanceled {
-                break
-            }
+        // Render and Vision work are split so rendering can stay ahead without
+        // making consumers poll or outlive the producer side.
+        let visionActiveLock = NSLock()
+        var activeVisionCount = 0
+        var maxConcurrentVision = 0
+        let renderGroup = DispatchGroup()
+        let visionGroup = DispatchGroup()
 
-            group.enter()
-            workerQueue.async { [renderer, recognizer] in
-                defer { group.leave() }
+        let renderQueue = DispatchQueue(
+            label: "dev.oth.apple-vision-ocr.render-producers",
+            qos: .userInitiated,
+            attributes: .concurrent
+        )
+        let visionQueue = DispatchQueue(
+            label: "dev.oth.apple-vision-ocr.vision-consumers",
+            qos: .userInitiated,
+            attributes: .concurrent
+        )
+
+        let defaultRenderProducerCount = min(8, max(2, pageNumbers.count / 8))
+        let renderProducerCount = min(
+            pageNumbers.count,
+            positiveIntegerEnvironmentValue("APPLE_VISION_OCR_RENDER_PRODUCERS") ?? defaultRenderProducerCount
+        )
+        let visionConsumerCount = min(OCRJobParallelism.maximumCount, pageNumbers.count)
+
+        for _ in 0..<renderProducerCount {
+            if control.isCanceled { break }
+            renderGroup.enter()
+            renderQueue.async { [renderer] in
+                defer { renderGroup.leave() }
+
+                let workerDocument = CGPDFDocument(options.inputURL as CFURL)
 
                 while !control.isCanceled {
+                    guard let pageNumber = nextPage() else { break }
+
+                    guard let page = workerDocument?.page(at: pageNumber) else {
+                        recordError(AppleVisionOCRError.pdfFailure("failed to read page \(pageNumber)"))
+                        break
+                    }
+
+                    let completedBeforePage = resultLock.withLock { completedPages }
+                    progress(OCRProgressEvent(
+                        stage: .renderingPage,
+                        currentFile: options.inputURL.lastPathComponent,
+                        completedPages: completedBeforePage,
+                        totalPages: pageNumbers.count,
+                        message: "Rendering page \(pageNumber)"
+                    ))
+
+                    do {
+                        let rendered = try renderer.render(page: page, scale: options.renderScale)
+                        let enqueued = renderedQueue.enqueue(
+                            RenderedPageQueueItem(pageNumber: pageNumber, rendered: rendered),
+                            shouldCancel: { control.isCanceled }
+                        )
+                        if !enqueued {
+                            break
+                        }
+                    } catch {
+                        recordError(error)
+                        break
+                    }
+                }
+            }
+        }
+
+        for _ in 0..<visionConsumerCount {
+            if control.isCanceled { break }
+            visionGroup.enter()
+            visionQueue.async { [recognizer] in
+                defer { visionGroup.leave() }
+
+                while !control.isCanceled {
+                    guard let item = renderedQueue.dequeue(shouldCancel: { control.isCanceled }) else {
+                        break
+                    }
+
                     guard pageLimiter.acquire(shouldCancel: { control.isCanceled }) else {
                         break
                     }
 
-                    do {
-                        defer { pageLimiter.release() }
+                    visionActiveLock.withLock {
+                        activeVisionCount += 1
+                        maxConcurrentVision = max(maxConcurrentVision, activeVisionCount)
+                    }
 
-                        guard let pageNumber = nextPage() else {
-                            break
+                    do {
+                        defer {
+                            visionActiveLock.withLock {
+                                activeVisionCount -= 1
+                            }
+                            pageLimiter.release()
                         }
 
                         try control.waitIfPaused {
@@ -196,54 +335,43 @@ public final class SearchablePDFPipeline {
                                 stage: .paused,
                                 currentFile: options.inputURL.lastPathComponent,
                                 completedPages: completed,
-                                totalPages: pageCount,
+                                totalPages: pageNumbers.count,
                                 message: "Paused"
                             ))
                         }
-
-                        guard let pageDocument = CGPDFDocument(options.inputURL as CFURL),
-                              let page = pageDocument.page(at: pageNumber) else {
-                            throw AppleVisionOCRError.pdfFailure("failed to read page \(pageNumber)")
-                        }
-
-                        let completedBeforePage = resultLock.withLock { completedPages }
-                        progress(OCRProgressEvent(
-                            stage: .renderingPage,
-                            currentFile: options.inputURL.lastPathComponent,
-                            completedPages: completedBeforePage,
-                            totalPages: pageCount,
-                            message: "Rendering page \(pageNumber)/\(pageCount)"
-                        ))
-                        let renderedPage = try renderer.render(page: page, scale: options.renderScale)
 
                         let completedBeforeOCR = resultLock.withLock { completedPages }
                         progress(OCRProgressEvent(
                             stage: .recognizingText,
                             currentFile: options.inputURL.lastPathComponent,
                             completedPages: completedBeforeOCR,
-                            totalPages: pageCount,
-                            message: "OCR page \(pageNumber)/\(pageCount)"
+                            totalPages: pageNumbers.count,
+                            message: "OCR page \(item.pageNumber)"
                         ))
+
                         let recognizedText = try recognizer.recognize(
-                            image: renderedPage.image,
+                            image: item.rendered.image,
                             languages: options.languages,
                             recognitionLevel: options.recognitionLevel
                         )
+
                         let overlays = recognizedText.map {
                             PDFTextOverlay(
                                 text: $0.text,
-                                rect: GeometryMapper.map(normalizedBox: $0.boundingBox, in: renderedPage.geometry)
+                                rect: GeometryMapper.map(normalizedBox: $0.boundingBox, in: item.rendered.geometry)
                             )
                         }
 
                         let result = PDFPageOCRResult(
-                            pageNumber: pageNumber,
-                            geometry: renderedPage.geometry,
+                            pageNumber: item.pageNumber,
+                            geometry: item.rendered.geometry,
                             overlays: overlays,
-                            backgroundImage: textPages.contains(pageNumber) ? renderedPage.image : nil
+                            backgroundImage: textPages.contains(item.pageNumber) ? item.rendered.image : nil
                         )
-                        let completedAfterPage = resultLock.withLock {
-                            pageResults[pageNumber - 1] = result
+
+                        let completedAfter = resultLock.withLock {
+                            let resultIndex = pageResultIndexes[item.pageNumber] ?? 0
+                            pageResults[resultIndex] = result
                             completedPages += 1
                             return completedPages
                         }
@@ -251,9 +379,9 @@ public final class SearchablePDFPipeline {
                         progress(OCRProgressEvent(
                             stage: .recognizingText,
                             currentFile: options.inputURL.lastPathComponent,
-                            completedPages: completedAfterPage,
-                            totalPages: pageCount,
-                            message: "Completed page \(pageNumber)/\(pageCount)"
+                            completedPages: completedAfter,
+                            totalPages: pageNumbers.count,
+                            message: "Completed page \(item.pageNumber)"
                         ))
                     } catch {
                         recordError(error)
@@ -263,7 +391,9 @@ public final class SearchablePDFPipeline {
             }
         }
 
-        group.wait()
+        renderGroup.wait()
+        renderedQueue.finish()
+        visionGroup.wait()
 
         if let firstError {
             throw firstError
@@ -272,9 +402,13 @@ public final class SearchablePDFPipeline {
             throw AppleVisionOCRError.pdfFailure("OCR job canceled")
         }
 
+        if ProcessInfo.processInfo.environment["APPLE_VISION_OCR_DEBUG_PIPELINE"] == "1" {
+            fputs("[VisionPipeline] Max concurrent Vision requests observed: \(maxConcurrentVision)\n", stderr)
+        }
+
         return try pageResults.enumerated().map { index, result in
             guard let result else {
-                throw AppleVisionOCRError.pdfFailure("missing OCR result for page \(index + 1)")
+                throw AppleVisionOCRError.pdfFailure("missing OCR result for page \(pageNumbers[index])")
             }
             return result
         }
@@ -307,4 +441,33 @@ public final class SearchablePDFPipeline {
         let report = try textPresenceDetector.inspect(options.inputURL)
         return Set(report.textPageNumbers)
     }
+
+    private func selectedPageNumbers(for options: OCRJobOptions, totalPageCount: Int) throws -> [Int] {
+        guard let pageRange = options.pageRange else {
+            return Array(1...totalPageCount)
+        }
+        guard pageRange.upperBound <= totalPageCount else {
+            throw AppleVisionOCRError.invalidUsage(
+                "page range \(pageRange.lowerBound)-\(pageRange.upperBound) exceeds page count \(totalPageCount)"
+            )
+        }
+        return Array(pageRange)
+    }
+}
+
+private extension NSCondition {
+    func withLock<T>(_ body: () -> T) -> T {
+        lock()
+        defer { unlock() }
+        return body()
+    }
+}
+
+private func positiveIntegerEnvironmentValue(_ name: String) -> Int? {
+    guard let rawValue = ProcessInfo.processInfo.environment[name],
+          let value = Int(rawValue),
+          value > 0 else {
+        return nil
+    }
+    return value
 }
