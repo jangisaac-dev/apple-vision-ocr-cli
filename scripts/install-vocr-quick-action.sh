@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_INSTALL_DIR="${VOCR_APP_INSTALL_DIR:-$HOME/Applications}"
 BIN_DIR="${VOCR_BIN_DIR:-$HOME/.local/bin}"
+FINDER_ACTION="$BIN_DIR/vocr-finder-action"
 WORKFLOW="$HOME/Library/Services/Apple Vision OCR.workflow"
 WORKFLOW_CONTENTS="$WORKFLOW/Contents"
 
@@ -57,7 +58,7 @@ cat > "$WORKFLOW_CONTENTS/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-cat > "$WORKFLOW_CONTENTS/document.wflow" <<'PLIST'
+cat > "$WORKFLOW_CONTENTS/document.wflow" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -84,7 +85,7 @@ cat > "$WORKFLOW_CONTENTS/document.wflow" <<'PLIST'
           <true/>
           <key>COMMAND_STRING</key>
           <string>#!/bin/zsh
-exec "$HOME/.local/bin/vocr-finder-action" "$@"</string>
+exec "$FINDER_ACTION" "\$@"</string>
           <key>inputMethod</key>
           <integer>1</integer>
           <key>shell</key>

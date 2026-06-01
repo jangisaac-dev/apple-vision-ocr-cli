@@ -6,14 +6,6 @@ Swift-only macOS OCR tool using Apple Vision. It includes:
 - `VOCR.app`: Finder-launched GUI with detail window and menu bar progress.
 - `Apple Vision OCR`: one Finder Quick Action for selected PDF files.
 
-Read this first:
-
-- `docs/superpowers/specs/2026-05-16-apple-vision-ocr-cli-design.md`
-- `docs/superpowers/specs/2026-05-16-apple-vision-ocr-cli-implementation-plan.md`
-- `CURRENT_STATUS.md`
-- `docs/future-ocr-backends.md`
-- `GOAL_PROMPT.md`
-
 ## Scope
 
 - Input: one or more PDF files.
@@ -21,6 +13,45 @@ Read this first:
 - OCR engine: Apple Vision text recognition.
 - Default languages: Korean and English, configurable with `--lang`.
 - Original PDFs are never modified.
+
+## Requirements
+
+- macOS 13 or later.
+- Xcode command line tools or Xcode with Swift 5.9 or later.
+
+## Install
+
+Build and run from the checkout:
+
+```bash
+swift run apple-vision-ocr input.pdf
+```
+
+Install the CLI, `VOCR.app`, and the Finder Quick Action for the current macOS user:
+
+```bash
+scripts/install-vocr-quick-action.sh
+```
+
+By default the installer writes only user-local files:
+
+```text
+~/Applications/VOCR.app
+~/.local/bin/apple-vision-ocr
+~/.local/bin/vocr-finder-action
+~/Library/Services/Apple Vision OCR.workflow
+```
+
+The app and binary locations can be customized per user:
+
+```bash
+VOCR_APP_INSTALL_DIR="$HOME/Applications" \
+VOCR_BIN_DIR="$HOME/.local/bin" \
+scripts/install-vocr-quick-action.sh
+```
+
+The Finder workflow is always installed under the current user's `~/Library/Services`.
+No original PDF is modified by the CLI or Finder workflow.
 
 ## Usage
 
@@ -75,12 +106,6 @@ Apple Vision's `fast` recognition level does not support Korean (`ko-KR`) on thi
 For large text-only Korean jobs where quality must stay on `accurate` + `--render-scale 2.0`, prefer `--split-workers 4 --page-parallelism 4`. On the 398-page reference PDF this measured `66.43s` versus the previous `229.48s` baseline, with byte-for-byte identical text output. `--split-workers` and `--page-range` are currently text-only; searchable PDF output still uses the single-process PDF writer path.
 
 ## VOCR Finder GUI
-
-Install the app and Finder Quick Action:
-
-```bash
-scripts/install-vocr-quick-action.sh
-```
 
 Finder shows one Quick Action:
 
@@ -163,45 +188,15 @@ env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache
 scripts/package-vocr-app.sh
 ```
 
-## Local Install
+## User Data
 
-This machine has the release binary installed at:
-
-```text
-~/.local/bin/apple-vision-ocr
-```
-
-`~/.local/bin` is on the shell `PATH`, so the CLI can be run from a normal terminal:
-
-```bash
-apple-vision-ocr input.pdf
-```
-
-Finder right-click support is installed as a Quick Action:
-
-```text
-~/Library/Services/Apple Vision OCR.workflow
-```
-
-The app is installed at:
-
-```text
-~/Applications/VOCR.app
-```
-
-The Quick Action calls:
-
-```text
-~/.local/bin/vocr-finder-action
-```
-
-Quick Action logs are written to:
+Quick Action logs are written under the current user's Library:
 
 ```text
 ~/Library/Logs/vocr-quick-action.log
 ```
 
-Menu bar/detail progress snapshots are written to:
+Menu bar/detail progress snapshots are written under the current user's Application Support directory:
 
 ```text
 ~/Library/Application Support/VOCR/progress/latest.json
@@ -211,3 +206,14 @@ The sample verification files live in `Samples/`:
 
 - `sample.pdf`: image-only OCR fixture.
 - `sample_ocr.pdf`: generated searchable output from the CLI.
+
+## Project Notes
+
+- Current implementation status: `CURRENT_STATUS.md`
+- Future OCR backend notes: `docs/future-ocr-backends.md`
+- Benchmark notes: `docs/benchmarks/`
+- Historical design handoff docs: `docs/superpowers/specs/`
+
+## License
+
+MIT. See `LICENSE`.
