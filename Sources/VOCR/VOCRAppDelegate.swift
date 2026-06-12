@@ -23,6 +23,7 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
         self.jobController = jobController
 
         wire(windowController: windowController, jobController: jobController)
+        NSApp.setActivationPolicy(.accessory)
         windowController.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
 
@@ -42,7 +43,7 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
             if shouldRunInBackground {
                 NSApp.setActivationPolicy(.accessory)
             } else {
-                NSApp.setActivationPolicy(.regular)
+                NSApp.setActivationPolicy(.accessory)
                 NSApp.activate(ignoringOtherApps: true)
             }
             jobController?.start(
@@ -94,7 +95,6 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
         }
 
         statusItemController.onShowWindow = { [weak windowController] in
-            NSApp.setActivationPolicy(.regular)
             windowController?.showWindow(nil)
             NSApp.activate(ignoringOtherApps: true)
         }

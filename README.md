@@ -169,7 +169,7 @@ Left-click opens the detail window. Right-click opens controls:
 ```
 
 Pause and cancel are applied at page boundaries. A page already inside Apple Vision recognition is allowed to finish first.
-Closing the detail window keeps VOCR running from the menu bar and removes the Dock icon.
+VOCR runs as a menu bar agent (`LSUIElement`), so it never shows a Dock icon — at launch the window appears without a Dock tile, and OCR runs in the background from the menu bar. Closing the detail window keeps VOCR running from the menu bar.
 The option window also includes `종료` when OCR is not running.
 When a job reaches a terminal state (`완료`, `취소`, or `실패`), VOCR exits automatically after a short delay.
 
