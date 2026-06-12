@@ -110,7 +110,8 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // Test seam: VOCR_HEADLESS triggers an automatic run. "1"/"pdf" → searchable PDF;
-    // "txt-pagebreaks" → page-divided TXT (used to verify the split page-break path).
+    // "txt-pagebreaks" → page-divided TXT (split page-break path);
+    // "cancel" → cancel mid-run; "pause" → pause then resume mid-run.
     private static var headlessMode: String? {
         guard let value = ProcessInfo.processInfo.environment["VOCR_HEADLESS"], !value.isEmpty else {
             return nil
@@ -120,7 +121,8 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
 
     private func startHeadless(jobController: OCRJobController) {
         do {
-            let wantsTextPageBreaks = Self.headlessMode == "txt-pagebreaks"
+            let mode = Self.headlessMode ?? "1"
+            let wantsTextPageBreaks = mode == "txt-pagebreaks"
             let selection = try OCRJobOutputSelection(
                 writesText: wantsTextPageBreaks,
                 writesPDF: !wantsTextPageBreaks,
@@ -133,9 +135,31 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
                 recognitionLevel: .accurate,
                 renderScale: .quality
             )
+            switch mode {
+            case "cancel":
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    Self.headlessLog("cancel requested")
+                    jobController.cancel()
+                }
+            case "pause":
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    Self.headlessLog("pause requested")
+                    jobController.pause()
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                    Self.headlessLog("resume requested")
+                    jobController.resume()
+                }
+            default:
+                break
+            }
         } catch {
             jobController.onLog(error.localizedDescription)
             NSApp.terminate(nil)
         }
+    }
+
+    private static func headlessLog(_ message: String) {
+        FileHandle.standardError.write(Data("VOCR-HEADLESS: \(message)\n".utf8))
     }
 }
