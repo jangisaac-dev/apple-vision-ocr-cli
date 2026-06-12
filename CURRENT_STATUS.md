@@ -1,6 +1,6 @@
 # Current Status
 
-Updated: 2026-05-29
+Updated: 2026-06-12
 
 ## Current Objective
 
@@ -12,10 +12,9 @@ The current goal is:
 1. Keep Korean/default OCR on Apple Vision `accurate`.
 2. Prevent unsupported fast-mode Korean output.
 3. Improve Korean OCR throughput through safe knobs:
-   - page-level parallelism;
-   - lower PDF render scale for optional speed-balanced runs;
-   - text-only split workers for large documents.
-4. Keep searchable PDF on the existing single-process writer path until PDF merge/order/geometry validation is designed and benchmarked.
+   - multi-process split workers for large documents (text-only and searchable PDF);
+   - lower PDF render scale for optional speed-balanced runs.
+4. Note on in-process parallelism: Apple Vision serializes recognition within a single process, so `--page-parallelism` does not raise throughput (it pins ~1-2 cores). Multi-process `--split-workers` is the knob that actually uses the machine.
 
 ## Implemented
 
@@ -30,7 +29,8 @@ The current goal is:
 - The core page scheduler uses a bounded worker pool so available page slots stay filled until the active PDF is exhausted.
 - The Apple Vision page pipeline now decouples PDF rendering from Vision recognition with a signaled bounded render-ahead queue. On the 398-page Korean reference PDF at render 2.0 + accurate, the final single-process default measured `real 215.61s` versus the earlier pp16 baseline `real 229.48s`, with identical text output hash.
 - CLI text-only OCR now supports `--page-range START-END` and `--split-workers N`. The 398-page Korean reference PDF measured `real 66.43s` with `--split-workers 4 --page-parallelism 4 --render-scale 2.0`, while preserving the baseline text SHA-256 exactly.
-- Searchable PDF split-worker support is intentionally deferred. The safe design would run child processes against the original PDF with non-overlapping page ranges, write per-range searchable PDFs, merge them in order, and verify page count, page order, page geometry, and extracted searchable text. This was reviewed but not implemented in this pass.
+- `--split-workers` upper bound raised from 8 to 16 (2026-06-12). On an 18-core machine the practical sweet spot is ~12 workers; in-process `--page-parallelism` gives no speedup because Apple Vision serializes recognition per process (measured: dense 24-page PDF stays ~45s for pp1/pp8/pp16, peak CPU ~199% = 2 cores; `--split-workers 12` reaches ~17 cores).
+- Searchable PDF split-worker support is now IMPLEMENTED (2026-06-12), following the previously-deferred safe design. New `Sources/AppleVisionOCRCLI/ChunkedPDFOCRRunner.swift` runs child processes over non-overlapping page ranges (`--output chunk.pdf --page-range A-B`), each producing a per-range searchable PDF via the proven single-process pipeline, then the parent merges them in page order. The merge uses CoreGraphics `CGContext.drawPDFPage` (the same mechanism `PDFTextOverlayWriter` already uses to copy original pages), NOT the rejected PDFKit chunk-rewrite approach, so the invisible OCR text layer is preserved unchanged. The `--split-workers` / `--page-range` validation was relaxed from "text-only" to "single output mode" (text-only XOR PDF-only); simultaneous text+PDF (`--txt`) and `--page-breaks` remain rejected. Routing: `CommandRunner` sends `splitWorkers` + a PDF output URL to `ChunkedPDFOCRRunner`, otherwise to `ChunkedTextOCRRunner`.
 
 ## Fresh Verification
 
@@ -43,6 +43,10 @@ The current goal is:
 - 2026-05-29: Full 398-page reference run passed with render 2.0 + accurate + pp16, text-only output, `real 215.61`, and SHA-256 matching the earlier pp16 baseline text output.
 - 2026-05-29: Full 398-page split-worker reference run passed with render 2.0 + accurate + `--split-workers 4 --page-parallelism 4`, text-only output, `real 66.43`, and SHA-256 matching the earlier pp16 baseline text output.
 - 2026-05-29: Split-worker output was compared with the baseline using SHA-256, `cmp`, and `wc -l -c`; both files were `11446` lines and `643531` bytes.
+- 2026-06-12: `swift build -c release` and `swift test` passed: 86 tests, 0 failures (Apple M5 Pro, 18 cores). +3 tests for the raised split-workers bound and PDF-only split parsing.
+- 2026-06-12: Searchable PDF split path benchmarked on a generated dense 24-page Korean+English PDF: single-process `--page-parallelism 12` = `46.28s`; `--split-workers 12` = `7.05s` (6.6x). Both outputs: 24 pages, identical extracted text length (73151 chars via PDFKit) — searchable text layer preserved by the merge.
+- 2026-06-12: Merge order/completeness verified on a 23-page PDF with per-page distinguishable markers, split `5,5,5,4,4` (non-even, exercises the remainder branch). Walking pages with PDFKit confirmed each merged page carries its own OCR marker in order, with no drops, duplicates, or reordering.
+- 2026-06-12 verification boundary: tested on generated PDFs with no page rotation and no pre-existing text layer (matches scanned-image inputs). Rotated pages and the existing-text rasterization branch are inherited from the proven single-process pipeline but were not independently re-exercised in the split path.
 
 ## Installed Artifact Verification
 
@@ -87,7 +91,7 @@ Quality decision:
 
 ## Next Validation Target
 
-If searchable PDF split-workers are resumed later, implement them as a separate PDF-specific merge path with explicit validation. Do not reuse the rejected PDFKit chunk-rewrite approach because it changed OCR output in testing.
+Searchable PDF split-workers are now implemented as a separate PDF-specific merge path (`ChunkedPDFOCRRunner`) with CoreGraphics `drawPDFPage` merge, exactly avoiding the rejected PDFKit chunk-rewrite approach that changed OCR output in testing. Remaining optional validation: confirm fidelity on rotated pages and on PDFs that already carry a selectable text layer (the rasterization branch), and measure on the full 398-page Korean reference. Note the merged PDF is modestly larger than single-process output (~20% on the test file) because per-chunk fonts/resources are not de-duplicated across the merge boundary.
 
 If a draft-speed mode is desired, add it explicitly as a separate Tesseract backend with a clear quality warning rather than silently mixing it into the default Apple Vision path.
 

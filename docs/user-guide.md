@@ -91,19 +91,24 @@ swift run apple-vision-ocr english.pdf \
 
 ## Large Documents
 
-For large text-only OCR jobs, split workers can shorten wall time while keeping
-page order in the final text output:
+For large OCR jobs, split workers can shorten wall time while keeping
+page order in the final output:
 
 ```bash
 swift run apple-vision-ocr large.pdf \
   --txt-only \
-  --split-workers 4 \
+  --split-workers 12 \
   --page-parallelism 4 \
   --render-scale 2.0
 ```
 
-`--split-workers` is text-only. Searchable PDF output still uses the normal
-single-process PDF writer path.
+`--split-workers` (2-16) now applies to both text-only and searchable PDF
+output. For PDF, each worker produces a partial searchable PDF over its page
+range and the parent merges them in page order, preserving the searchable text
+layer. Note: in-process `--page-parallelism` alone does not speed things up —
+Apple Vision serializes recognition within one process, so `--split-workers` is
+the knob that actually uses multiple cores. On an 18-core machine ~12 workers is
+the sweet spot.
 
 If you only need part of a document:
 

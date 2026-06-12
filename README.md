@@ -105,13 +105,15 @@ Speed controls:
 --recognition-level accurate|fast   accurate is the default; fast only supports a limited language set
 --page-parallelism 1-16             OCR up to N pages from the current PDF at once; default is 8
 --render-scale 1.25|1.5|2.0         2.0 quality, 1.5 balanced Korean speed, 1.25 compact
---page-range START-END              text-only OCR over a 1-based page range
---split-workers 2-8                 split text-only OCR across child processes, then join text in order
+--page-range START-END              OCR over a 1-based page range (text-only or PDF-only output)
+--split-workers 2-16                split OCR across child processes (text-only or searchable PDF), then join output in order
 ```
 
 Apple Vision's `fast` recognition level does not support Korean (`ko-KR`) on this macOS version. Korean/default `ko,en` OCR should use `accurate` plus `--page-parallelism` and, when speed matters more than maximum scan fidelity, `--render-scale 1.5`.
 
-For large text-only Korean jobs where quality must stay on `accurate` + `--render-scale 2.0`, prefer `--split-workers 4 --page-parallelism 4`. On the 398-page reference PDF this measured `66.43s` versus the previous `229.48s` baseline, with byte-for-byte identical text output. `--split-workers` and `--page-range` are currently text-only; searchable PDF output still uses the single-process PDF writer path.
+For large text-only Korean jobs where quality must stay on `accurate` + `--render-scale 2.0`, prefer `--split-workers 4 --page-parallelism 4`. On the 398-page reference PDF this measured `66.43s` versus the previous `229.48s` baseline, with byte-for-byte identical text output.
+
+In-process `--page-parallelism` does not raise throughput: Apple Vision serializes recognition within a single process, so it pins only ~1-2 cores regardless of the value. `--split-workers` is the real parallelism knob — it runs N independent processes and saturates the machine. It now applies to both text-only and searchable PDF output (PDF chunks are merged in page order with the searchable text layer preserved). On an 18-core machine, ~12 workers is the practical sweet spot.
 
 ## VOCR Finder GUI
 

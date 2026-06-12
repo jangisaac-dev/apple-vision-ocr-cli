@@ -101,20 +101,6 @@ public struct CLIOptions {
         guard !includePageBreaks || wantsDefaultTextOutput || wantsTextOnlyOutput || txtOutputURL != nil else {
             throw AppleVisionOCRError.invalidUsage("--page-breaks requires --txt, --txt-only, or --txt-output")
         }
-        if splitWorkers != nil {
-            guard wantsTextOnlyOutput else {
-                throw AppleVisionOCRError.invalidUsage("--split-workers requires --txt-only")
-            }
-            guard !includePageBreaks else {
-                throw AppleVisionOCRError.invalidUsage("--split-workers cannot be combined with --page-breaks")
-            }
-        }
-        if pageRange != nil {
-            guard wantsTextOnlyOutput else {
-                throw AppleVisionOCRError.invalidUsage("--page-range requires --txt-only")
-            }
-        }
-
         let resolvedOutputURL = try wantsTextOnlyOutput
             ? nil
             : outputURL ?? OutputPathResolver.defaultOutputURL(for: inputURL)
@@ -126,6 +112,19 @@ public struct CLIOptions {
             writesText: resolvedTextOutputURL != nil,
             includesPageBreaks: includePageBreaks
         )
+        if splitWorkers != nil {
+            guard outputMode.writesText != outputMode.writesPDF else {
+                throw AppleVisionOCRError.invalidUsage("--split-workers cannot be combined with simultaneous text and PDF output")
+            }
+            guard !outputMode.includesPageBreaks else {
+                throw AppleVisionOCRError.invalidUsage("--split-workers cannot be combined with --page-breaks")
+            }
+        }
+        if pageRange != nil {
+            guard outputMode.writesText != outputMode.writesPDF else {
+                throw AppleVisionOCRError.invalidUsage("--page-range requires text-only or PDF-only output")
+            }
+        }
         try validateRecognitionLanguages(languages, recognitionLevel: recognitionLevel)
         return CLIOptions(
             inputURL: inputURL,
@@ -234,8 +233,8 @@ private func parsePageParallelism(_ rawValue: String) throws -> OCRJobParallelis
 }
 
 private func parseSplitWorkers(_ rawValue: String) throws -> Int {
-    guard let count = Int(rawValue), (2...8).contains(count) else {
-        throw AppleVisionOCRError.invalidUsage("split workers must be between 2 and 8")
+    guard let count = Int(rawValue), (2...16).contains(count) else {
+        throw AppleVisionOCRError.invalidUsage("split workers must be between 2 and 16")
     }
     return count
 }

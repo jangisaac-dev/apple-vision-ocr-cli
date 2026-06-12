@@ -159,6 +159,61 @@ final class CLIOptionsTests: XCTestCase {
         XCTAssertEqual(options.splitWorkers, 4)
     }
 
+    func testParsesSplitWorkersForPDFOnly() throws {
+        let options = try CLIOptions.parse([
+            "/tmp/input.pdf",
+            "--output", "/tmp/out.pdf",
+            "--split-workers", "4"
+        ])
+
+        XCTAssertEqual(options.splitWorkers, 4)
+        XCTAssertTrue(options.outputMode.writesPDF)
+        XCTAssertFalse(options.outputMode.writesText)
+    }
+
+    func testParsesSplitWorkersUpperBoundForTextOnly() throws {
+        let options = try CLIOptions.parse([
+            "/tmp/input.pdf",
+            "--txt-only",
+            "--txt-output", "/tmp/custom.txt",
+            "--split-workers", "16"
+        ])
+
+        XCTAssertEqual(options.splitWorkers, 16)
+    }
+
+    func testSplitWorkersRejectsAboveUpperBound() {
+        XCTAssertThrowsError(try CLIOptions.parse([
+            "/tmp/input.pdf",
+            "--txt-only",
+            "--txt-output", "/tmp/custom.txt",
+            "--split-workers", "17"
+        ])) { error in
+            XCTAssertEqual((error as? AppleVisionOCRError)?.exitCode, .invalidUsage)
+        }
+    }
+
+    func testSplitWorkersRejectsBelowLowerBound() {
+        XCTAssertThrowsError(try CLIOptions.parse([
+            "/tmp/input.pdf",
+            "--txt-only",
+            "--txt-output", "/tmp/custom.txt",
+            "--split-workers", "1"
+        ])) { error in
+            XCTAssertEqual((error as? AppleVisionOCRError)?.exitCode, .invalidUsage)
+        }
+    }
+
+    func testSplitWorkersRejectsCombinedTextAndPDF() {
+        XCTAssertThrowsError(try CLIOptions.parse([
+            "/tmp/input.pdf",
+            "--txt-output", "/tmp/x.txt",
+            "--split-workers", "4"
+        ])) { error in
+            XCTAssertEqual((error as? AppleVisionOCRError)?.exitCode, .invalidUsage)
+        }
+    }
+
     func testParsesPageRangeForTextOnly() throws {
         let options = try CLIOptions.parse([
             "/tmp/input.pdf",
@@ -168,6 +223,16 @@ final class CLIOptionsTests: XCTestCase {
         ])
 
         XCTAssertEqual(options.pageRange, 101...200)
+    }
+
+    func testParsesPageRangeForPDFOnly() throws {
+        let options = try CLIOptions.parse([
+            "/tmp/input.pdf",
+            "--output", "/tmp/out.pdf",
+            "--page-range", "2-5"
+        ])
+
+        XCTAssertEqual(options.pageRange, 2...5)
     }
 
     func testPageBreaksRequireTextOutput() {

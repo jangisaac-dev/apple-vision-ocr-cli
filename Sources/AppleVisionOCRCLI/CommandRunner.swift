@@ -46,11 +46,19 @@ public final class CommandRunner {
                 }
 
                 if options.splitWorkers != nil {
-                    try ChunkedTextOCRRunner(
-                        options: options,
-                        executableURL: executableURL,
-                        stderr: stderr
-                    ).run()
+                    if options.outputURL != nil {
+                        try ChunkedPDFOCRRunner(
+                            options: options,
+                            executableURL: executableURL,
+                            stderr: stderr
+                        ).run()
+                    } else {
+                        try ChunkedTextOCRRunner(
+                            options: options,
+                            executableURL: executableURL,
+                            stderr: stderr
+                        ).run()
+                    }
                 } else {
                     try pipeline.run(options: options) { [stderr] message in
                         stderr(message)
@@ -75,7 +83,7 @@ public final class CommandRunner {
 
     private static let helpText = """
     Usage:
-      apple-vision-ocr input.pdf [--output output.pdf] [--txt|--txt-output output.txt|--txt-only] [--page-breaks] [--lang ko,en] [--recognition-level accurate|fast] [--page-parallelism 1-16] [--render-scale 1.25|1.5|2.0] [--page-range START-END] [--split-workers 2-8] [--dry-run]
+      apple-vision-ocr input.pdf [--output output.pdf] [--txt|--txt-output output.txt|--txt-only] [--page-breaks] [--lang ko,en] [--recognition-level accurate|fast] [--page-parallelism 1-16] [--render-scale 1.25|1.5|2.0] [--page-range START-END] [--split-workers 2-16] [--dry-run]
       apple-vision-ocr --help
       apple-vision-ocr --version
 
@@ -89,8 +97,8 @@ public final class CommandRunner {
       --recognition-level VALUE  accurate or fast. Defaults to accurate. Fast supports a limited language set.
       --page-parallelism N       OCR up to N pages at once. Defaults to 8.
       --render-scale N           PDF render scale: 2.0 quality, 1.5 balanced Korean speed, 1.25 compact.
-      --page-range START-END     OCR only a 1-based page range. Requires --txt-only.
-      --split-workers N          Split text-only OCR across N child processes. Requires --txt-only.
+      --page-range START-END     OCR only a 1-based page range.
+      --split-workers N          Split OCR across N child processes for text-only OR PDF output.
       --dry-run                  Validate arguments and print the output path without writing.
       --help                     Show this help text.
       --version                  Show the version.
