@@ -111,7 +111,7 @@ Speed controls:
 
 Apple Vision's `fast` recognition level does not support Korean (`ko-KR`) on this macOS version. Korean/default `ko,en` OCR should use `accurate` plus `--page-parallelism` and, when speed matters more than maximum scan fidelity, `--render-scale 1.5`.
 
-For large text-only Korean jobs where quality must stay on `accurate` + `--render-scale 2.0`, prefer `--split-workers 4 --page-parallelism 4`. On the 398-page reference PDF this measured `66.43s` versus the previous `229.48s` baseline, with byte-for-byte identical text output.
+For large jobs where quality must stay on `accurate` + `--render-scale 2.0`, raise `--split-workers` toward the core-count sweet spot (~12 on an 18-core machine). An early `--split-workers 4` run on the 398-page reference PDF measured `66.43s` versus the `229.48s` single-process baseline, with byte-for-byte identical text output; more workers scale further. `--page-parallelism` has no effect under `--split-workers` (each worker is a single process over its own page range).
 
 In-process `--page-parallelism` does not raise throughput: Apple Vision serializes recognition within a single process, so it pins only ~1-2 cores regardless of the value. `--split-workers` is the real parallelism knob — it runs N independent processes and saturates the machine. It now applies to both text-only and searchable PDF output (PDF chunks are merged in page order with the searchable text layer preserved). On an 18-core machine, ~12 workers is the practical sweet spot.
 
