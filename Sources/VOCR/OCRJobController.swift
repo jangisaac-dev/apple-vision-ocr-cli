@@ -211,6 +211,7 @@ final class OCRJobController {
                             languages: jobOptions.languages,
                             recognitionLevel: recognitionLevel,
                             renderScale: renderScale,
+                            includePageBreaks: selection.includesPageBreaks,
                             control: control
                         ) { [weak self] update in
                             guard let self else {

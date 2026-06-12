@@ -28,6 +28,7 @@ public final class SplitProcessOCRRunner {
         languages: [String],
         recognitionLevel: OCRRecognitionLevel,
         renderScale: OCRRenderScale,
+        includePageBreaks: Bool = false,
         control: OCRJobControl = OCRJobControl(),
         onProgress: ((ProgressUpdate) -> Void)? = nil
     ) throws {
@@ -63,6 +64,7 @@ public final class SplitProcessOCRRunner {
             languages: languages,
             recognitionLevel: recognitionLevel,
             renderScale: renderScale,
+            includePageBreaks: includePageBreaks,
             totalPages: pageCount,
             control: control,
             onProgress: onProgress
@@ -199,6 +201,7 @@ public final class SplitProcessOCRRunner {
         languages: [String],
         recognitionLevel: OCRRecognitionLevel,
         renderScale: OCRRenderScale,
+        includePageBreaks: Bool,
         totalPages: Int,
         control: OCRJobControl,
         onProgress: ((ProgressUpdate) -> Void)?
@@ -224,7 +227,8 @@ public final class SplitProcessOCRRunner {
                     output: output,
                     languages: languages,
                     recognitionLevel: recognitionLevel,
-                    renderScale: renderScale
+                    renderScale: renderScale,
+                    includePageBreaks: includePageBreaks
                 )
                 process.standardOutput = stdoutPipe
                 process.standardError = stderrPipe
@@ -327,7 +331,8 @@ public final class SplitProcessOCRRunner {
         output: Output,
         languages: [String],
         recognitionLevel: OCRRecognitionLevel,
-        renderScale: OCRRenderScale
+        renderScale: OCRRenderScale,
+        includePageBreaks: Bool
     ) -> [String] {
         let commonArguments = [
             "--lang", languages.joined(separator: ","),
@@ -343,11 +348,15 @@ public final class SplitProcessOCRRunner {
                 "--output", chunk.outputURL.path
             ] + commonArguments
         case .text:
-            return [
+            var arguments = [
                 inputURL.path,
                 "--txt-only",
                 "--txt-output", chunk.outputURL.path
             ] + commonArguments
+            if includePageBreaks {
+                arguments.append("--page-breaks")
+            }
+            return arguments
         }
     }
 

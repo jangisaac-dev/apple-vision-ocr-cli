@@ -29,7 +29,7 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
 
         if files.isEmpty {
             windowController.appendLog("Finder에서 PDF 파일을 선택한 뒤 Apple Vision OCR을 실행하세요.")
-        } else if ProcessInfo.processInfo.environment["VOCR_HEADLESS"] == "1" {
+        } else if Self.headlessMode != nil {
             startHeadless(jobController: jobController)
         }
     }
@@ -85,7 +85,7 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
         }
         jobController.onFinish = { [weak windowController] state in
             windowController?.finish(state)
-            if ProcessInfo.processInfo.environment["VOCR_HEADLESS"] == "1" {
+            if Self.headlessMode != nil {
                 NSApp.terminate(nil)
             } else if VOCRAppLifecyclePolicy.shouldTerminateAfterFinish(state) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -109,12 +109,22 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // Test seam: VOCR_HEADLESS triggers an automatic run. "1"/"pdf" → searchable PDF;
+    // "txt-pagebreaks" → page-divided TXT (used to verify the split page-break path).
+    private static var headlessMode: String? {
+        guard let value = ProcessInfo.processInfo.environment["VOCR_HEADLESS"], !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
+
     private func startHeadless(jobController: OCRJobController) {
         do {
+            let wantsTextPageBreaks = Self.headlessMode == "txt-pagebreaks"
             let selection = try OCRJobOutputSelection(
-                writesText: false,
-                writesPDF: true,
-                includesPageBreaks: false
+                writesText: wantsTextPageBreaks,
+                writesPDF: !wantsTextPageBreaks,
+                includesPageBreaks: wantsTextPageBreaks
             )
             let parallelism = try OCRJobParallelism(count: VOCRWindowController.defaultWorkerCount)
             jobController.start(
