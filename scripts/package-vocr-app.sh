@@ -21,6 +21,8 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 cp "$ROOT/.build/release/VOCR" "$MACOS_DIR/VOCR"
 chmod 755 "$MACOS_DIR/VOCR"
+cp "$ROOT/.build/release/apple-vision-ocr" "$MACOS_DIR/apple-vision-ocr"
+chmod 755 "$MACOS_DIR/apple-vision-ocr"
 
 cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

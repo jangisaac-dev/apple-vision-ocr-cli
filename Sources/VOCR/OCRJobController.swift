@@ -43,6 +43,13 @@ final class OCRJobController {
     private let parallelismLock = NSLock()
     private var activeParallelism = OCRJobParallelism.default
     private var parallelismLimiter: OCRParallelismLimiter?
+    private lazy var cliExecutableURL: URL? = Self.resolveCLIExecutableURL()
+    private lazy var splitRunner: SplitProcessOCRRunner? = {
+        guard let cliExecutableURL else {
+            return nil
+        }
+        return SplitProcessOCRRunner(executableURL: cliExecutableURL)
+    }()
 
     private struct PreparedJob {
         let index: Int
@@ -97,10 +104,10 @@ final class OCRJobController {
     func updateParallelism(_ parallelism: OCRJobParallelism) {
         setActiveParallelism(parallelism)
         if isRunning {
-            log("동시 OCR 페이지 수 변경: \(parallelism.count)개")
+            log("동시 워커 프로세스 수 변경: \(parallelism.count)개")
             emit(snapshot: snapshotFromLast(
                 state: state,
-                message: "동시 OCR 페이지 \(parallelism.count)개"
+                message: "동시 워커 프로세스 \(parallelism.count)개"
             ))
         }
     }
@@ -172,6 +179,17 @@ final class OCRJobController {
                 }
 
                 do {
+                    let workerCount = currentParallelism().count
+                    let canUseSplitRunner = splitRunner != nil
+                        && selection.writesText != selection.writesPDF
+                        && workerCount > 1
+
+                    if selection.writesText && selection.writesPDF {
+                        log("TXT+PDF 동시 출력은 단일 프로세스로 실행합니다.")
+                    } else if splitRunner == nil {
+                        log("apple-vision-ocr CLI를 찾지 못해 단일 프로세스로 실행합니다.")
+                    }
+
                     let jobOptions = try OCRJobOptions(
                         inputURL: job.inputURL,
                         pdfOutputURL: job.output.pdfOutputURL,
@@ -185,21 +203,48 @@ final class OCRJobController {
                     log("시작: \(job.inputURL.lastPathComponent)")
                     emitOutput(job.output)
 
-                    try pipeline.run(job: jobOptions, control: control, pageLimiter: pageLimiter) { [weak self] event in
-                        guard let self else {
-                            return
+                    if canUseSplitRunner, let splitRunner {
+                        try splitRunner.run(
+                            inputURL: job.inputURL,
+                            output: splitOutput(for: job.output, selection: selection),
+                            workerCount: workerCount,
+                            languages: jobOptions.languages,
+                            recognitionLevel: recognitionLevel,
+                            renderScale: renderScale,
+                            control: control
+                        ) { [weak self] update in
+                            guard let self else {
+                                return
+                            }
+                            let snapshot = aggregateLock.withLock {
+                                aggregate.pageProgress[job.index] = update.completedPages
+                                return self.snapshot(
+                                    state: self.state,
+                                    currentFile: job.inputURL.lastPathComponent,
+                                    aggregate: aggregate,
+                                    event: nil,
+                                    message: "OCR \(job.inputURL.lastPathComponent)"
+                                )
+                            }
+                            self.emit(snapshot: snapshot)
                         }
-                        let snapshot = aggregateLock.withLock {
-                            aggregate.pageProgress[job.index] = event.completedPages
-                            return self.snapshot(
-                                state: self.state,
-                                currentFile: job.inputURL.lastPathComponent,
-                                aggregate: aggregate,
-                                event: event,
-                                message: event.message
-                            )
+                    } else {
+                        try pipeline.run(job: jobOptions, control: control, pageLimiter: pageLimiter) { [weak self] event in
+                            guard let self else {
+                                return
+                            }
+                            let snapshot = aggregateLock.withLock {
+                                aggregate.pageProgress[job.index] = event.completedPages
+                                return self.snapshot(
+                                    state: self.state,
+                                    currentFile: job.inputURL.lastPathComponent,
+                                    aggregate: aggregate,
+                                    event: event,
+                                    message: event.message
+                                )
+                            }
+                            self.emit(snapshot: snapshot)
                         }
-                        self.emit(snapshot: snapshot)
                     }
 
                     let completionSnapshot = aggregateLock.withLock {
@@ -235,6 +280,49 @@ final class OCRJobController {
             let finalState: VOCRRunState = control.isCanceled || state == .canceled ? .canceled : .failed
             finish(state: finalState, message: errorMessage(error))
         }
+    }
+
+    private func splitOutput(for output: VOCRJobOutput, selection: OCRJobOutputSelection) throws -> SplitProcessOCRRunner.Output {
+        if selection.writesPDF, let pdfOutputURL = output.pdfOutputURL {
+            return .searchablePDF(pdfOutputURL)
+        }
+        if selection.writesText, let textOutputURL = output.textOutputURL {
+            return .text(textOutputURL)
+        }
+        throw OCRJobOptionError.missingOutput
+    }
+
+    private static func resolveCLIExecutableURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        bundleExecutableURL: URL? = Bundle.main.executableURL,
+        fileManager: FileManager = .default
+    ) -> URL? {
+        if let path = environment["VOCR_CLI_PATH"], fileManager.isExecutableFile(atPath: path) {
+            return URL(fileURLWithPath: path)
+        }
+
+        if let siblingURL = bundleExecutableURL?
+            .deletingLastPathComponent()
+            .appendingPathComponent("apple-vision-ocr"),
+           fileManager.isExecutableFile(atPath: siblingURL.path) {
+            return siblingURL
+        }
+
+        let localBinURL = fileManager.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local/bin/apple-vision-ocr")
+        if fileManager.isExecutableFile(atPath: localBinURL.path) {
+            return localBinURL
+        }
+
+        for directory in environment["PATH", default: ""].split(separator: ":") {
+            let candidate = URL(fileURLWithPath: String(directory))
+                .appendingPathComponent("apple-vision-ocr")
+            if fileManager.isExecutableFile(atPath: candidate.path) {
+                return candidate
+            }
+        }
+
+        return nil
     }
 
     private func setActiveParallelism(_ parallelism: OCRJobParallelism) {

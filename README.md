@@ -133,8 +133,7 @@ Searchable PDF 생성          -> input_ocr.pdf
 
 You can select TXT, Searchable PDF, or both. `Page 구분자 넣기` is only available when `TXT 추출` is selected.
 
-The `동시 OCR 페이지 수` control defaults to 8 and sets how many pages within the current PDF can run at the same time. Selected PDFs are processed one file at a time so the total number of active Apple Vision requests stays within this value.
-This value can be changed while OCR is running or paused. Lowering it does not stop pages already inside OCR; it limits how many new pages can start next.
+The `동시 워커 프로세스 수` control defaults to an auto value based on CPU cores (about two-thirds of the active processors, capped at 16) and sets how many child OCR processes run in parallel. When it is 2 or more and a single output type (TXT-only or PDF-only) is selected, VOCR splits the document across that many `apple-vision-ocr` worker processes — Apple Vision serializes recognition within one process, so multi-process is what actually uses every core (about 6x faster on long PDFs). When set to 1, or when both TXT and PDF are selected, VOCR runs the in-process single-process path instead. The bundled CLI is found inside `VOCR.app` (or via `VOCR_CLI_PATH`); if it cannot be found, VOCR falls back to single-process and notes it in the log.
 
 The `인식 모드` control shows `정확도 우선` and `속도 우선 (영문 전용)`. `속도 우선` is blocked for the current Korean-default workflow because Apple Vision's fast text-recognition level does not support Korean.
 The `한국어 속도/품질` control keeps Korean OCR on `정확도 우선` and adjusts only the PDF render scale:

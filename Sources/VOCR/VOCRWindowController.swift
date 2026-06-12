@@ -2,6 +2,10 @@ import AppKit
 import AppleVisionOCRCore
 
 final class VOCRWindowController: NSWindowController, NSWindowDelegate {
+    static var defaultWorkerCount: Int {
+        min(OCRJobParallelism.maximumCount, max(2, ProcessInfo.processInfo.activeProcessorCount * 2 / 3))
+    }
+
     var onStart: (OCRJobOutputSelection, OCRJobParallelism, OCRRecognitionLevel, OCRRenderScale, Bool) -> Void = { _, _, _, _, _ in }
     var onPause: () -> Void = {}
     var onResume: () -> Void = {}
@@ -25,7 +29,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
     private let recognitionLevelPopup = NSPopUpButton()
     private let renderScalePopup = NSPopUpButton()
     private let parallelismStepper = NSStepper()
-    private let parallelismValueField = NSTextField(labelWithString: "\(OCRJobParallelism.default.count)")
+    private let parallelismValueField = NSTextField(labelWithString: "\(VOCRWindowController.defaultWorkerCount)")
     private let runInBackgroundCheckbox = NSButton(checkboxWithTitle: "시작 후 백그라운드로 전환", target: nil, action: nil)
     private let startButton = NSButton(title: "시작", target: nil, action: nil)
     private let pauseButton = NSButton(title: "일시정지", target: nil, action: nil)
@@ -119,7 +123,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
         outputStack.alignment = .leading
         outputStack.spacing = 8
 
-        let parallelismHeader = NSTextField(labelWithString: "동시 OCR 페이지 수")
+        let parallelismHeader = NSTextField(labelWithString: "동시 워커 프로세스 수")
         parallelismHeader.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
         let recognitionLevelHeader = NSTextField(labelWithString: "인식 모드")
         recognitionLevelHeader.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
@@ -141,7 +145,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
 
         parallelismStepper.minValue = Double(OCRJobParallelism.minimumCount)
         parallelismStepper.maxValue = Double(OCRJobParallelism.maximumCount)
-        parallelismStepper.integerValue = OCRJobParallelism.default.count
+        parallelismStepper.integerValue = Self.defaultWorkerCount
         parallelismStepper.target = self
         parallelismStepper.action = #selector(parallelismChanged)
         parallelismValueField.alignment = .center
@@ -348,7 +352,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
             guard confirmExistingSearchableTextIfNeeded(selection: selection) else {
                 return
             }
-            appendLog("작업 시작: \(recognitionLevel.rawValue) · 렌더 \(renderScale.value)x · 동시 OCR 페이지 \(parallelism.count)개")
+            appendLog("작업 시작: \(recognitionLevel.rawValue) · 렌더 \(renderScale.value)x · 동시 워커 프로세스 \(parallelism.count)개")
             if shouldRunInBackground {
                 window?.orderOut(nil)
             }
@@ -358,7 +362,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
         } catch OCRJobOptionError.pageBreaksRequireText {
             appendLog("Page 구분자는 TXT 추출을 선택해야 사용할 수 있습니다.")
         } catch OCRJobOptionError.invalidParallelism {
-            appendLog("동시 OCR 페이지 수는 \(OCRJobParallelism.minimumCount)-\(OCRJobParallelism.maximumCount) 사이여야 합니다.")
+            appendLog("동시 워커 프로세스 수는 \(OCRJobParallelism.minimumCount)-\(OCRJobParallelism.maximumCount) 사이여야 합니다.")
         } catch {
             appendLog(error.localizedDescription)
         }

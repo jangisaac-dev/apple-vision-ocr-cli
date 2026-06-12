@@ -49,6 +49,17 @@ final class VOCRAppLifecyclePolicyTests: XCTestCase {
     }
 
     @MainActor
+    func testOptionWindowLabelsParallelismAsWorkerProcesses() {
+        _ = NSApplication.shared
+        let controller = VOCRWindowController(files: [])
+
+        let hasWorkerProcessLabel = controller.window?.contentView
+            .flatMap { Self.containsText("동시 워커 프로세스 수", in: $0) } ?? false
+
+        XCTAssertTrue(hasWorkerProcessLabel)
+    }
+
+    @MainActor
     private static func containsButton(titled title: String, in view: NSView) -> Bool {
         if let button = view as? NSButton, button.title == title {
             return true

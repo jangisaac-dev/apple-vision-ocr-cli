@@ -1,6 +1,6 @@
 # Current Status
 
-Updated: 2026-06-12
+Updated: 2026-06-13
 
 ## Current Objective
 
@@ -30,6 +30,7 @@ The current goal is:
 - The Apple Vision page pipeline now decouples PDF rendering from Vision recognition with a signaled bounded render-ahead queue. On the 398-page Korean reference PDF at render 2.0 + accurate, the final single-process default measured `real 215.61s` versus the earlier pp16 baseline `real 229.48s`, with identical text output hash.
 - CLI text-only OCR now supports `--page-range START-END` and `--split-workers N`. The 398-page Korean reference PDF measured `real 66.43s` with `--split-workers 4 --page-parallelism 4 --render-scale 2.0`, while preserving the baseline text SHA-256 exactly.
 - `--split-workers` upper bound raised from 8 to 16 (2026-06-12). On an 18-core machine the practical sweet spot is ~12 workers; in-process `--page-parallelism` gives no speedup because Apple Vision serializes recognition per process (measured: dense 24-page PDF stays ~45s for pp1/pp8/pp16, peak CPU ~199% = 2 cores; `--split-workers 12` reaches ~17 cores).
+- VOCR GUI (the Finder right-click path) now uses multi-process parallelism (2026-06-13). The split/merge logic was extracted into shared `Sources/AppleVisionOCRCore/SplitProcessOCRRunner.swift` (spawns `apple-vision-ocr` page-range children, parses their "Completed page" stderr lines for live progress, merges PDFs / concatenates text, supports cancel via `OCRJobControl` and pause via SIGSTOP/SIGCONT). Both CLI runners are now thin wrappers over it. `OCRJobController` uses the shared runner when a single output mode (TXT-only XOR PDF-only) is selected and the worker count is >= 2, and falls back to the in-process pipeline for combined TXT+PDF, worker count 1, or when the CLI binary cannot be located. The GUI "동시 OCR 페이지 수" stepper became "동시 워커 프로세스 수" (auto-default ~= activeProcessorCount*2/3, capped 16). `apple-vision-ocr` is now bundled inside `VOCR.app/Contents/MacOS/` (package-vocr-app.sh); the GUI locates it via `VOCR_CLI_PATH` > bundle sibling > `~/.local/bin` > PATH. A `VOCR_HEADLESS=1` env seam auto-runs a default searchable-PDF job for end-to-end testing.
 - Searchable PDF split-worker support is now IMPLEMENTED (2026-06-12), following the previously-deferred safe design. New `Sources/AppleVisionOCRCLI/ChunkedPDFOCRRunner.swift` runs child processes over non-overlapping page ranges (`--output chunk.pdf --page-range A-B`), each producing a per-range searchable PDF via the proven single-process pipeline, then the parent merges them in page order. The merge uses CoreGraphics `CGContext.drawPDFPage` (the same mechanism `PDFTextOverlayWriter` already uses to copy original pages), NOT the rejected PDFKit chunk-rewrite approach, so the invisible OCR text layer is preserved unchanged. The `--split-workers` / `--page-range` validation was relaxed from "text-only" to "single output mode" (text-only XOR PDF-only); simultaneous text+PDF (`--txt`) and `--page-breaks` remain rejected. Routing: `CommandRunner` sends `splitWorkers` + a PDF output URL to `ChunkedPDFOCRRunner`, otherwise to `ChunkedTextOCRRunner`.
 
 ## Fresh Verification
@@ -47,6 +48,8 @@ The current goal is:
 - 2026-06-12: Searchable PDF split path benchmarked on a generated dense 24-page Korean+English PDF: single-process `--page-parallelism 12` = `46.28s`; `--split-workers 12` = `7.05s` (6.6x). Both outputs: 24 pages, identical extracted text length (73151 chars via PDFKit) — searchable text layer preserved by the merge.
 - 2026-06-12: Merge order/completeness verified on a 23-page PDF with per-page distinguishable markers, split `5,5,5,4,4` (non-even, exercises the remainder branch). Walking pages with PDFKit confirmed each merged page carries its own OCR marker in order, with no drops, duplicates, or reordering.
 - 2026-06-12 verification boundary: tested on generated PDFs with no page rotation and no pre-existing text layer (matches scanned-image inputs). Rotated pages and the existing-text rasterization branch are inherited from the proven single-process pipeline but were not independently re-exercised in the split path.
+- 2026-06-13: `swift build -c release` and `swift test` passed: 91 tests, 0 failures.
+- 2026-06-13: GUI split path verified headless on the 24-page dense PDF. `VOCR_HEADLESS=1 VOCR_CLI_PATH=... ./.build/release/VOCR dense.pdf` produced `dense_ocr.pdf` (24 pages, 49415 extracted chars) in ~6.5s vs ~26s single-process. Also verified the packaged `VOCR.app` (no VOCR_CLI_PATH) self-locates the bundled sibling CLI and runs the split path in ~6.6s. Cancel (terminate children) and pause (SIGSTOP/SIGCONT) are code-reviewed but not yet exercised end-to-end; combined TXT+PDF still runs the in-process path.
 
 ## Installed Artifact Verification
 

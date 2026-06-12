@@ -1,4 +1,5 @@
 import AppKit
+import AppleVisionOCRCore
 
 final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
     private let files: [URL]
@@ -27,6 +28,8 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
 
         if files.isEmpty {
             windowController.appendLog("Finder에서 PDF 파일을 선택한 뒤 Apple Vision OCR을 실행하세요.")
+        } else if ProcessInfo.processInfo.environment["VOCR_HEADLESS"] == "1" {
+            startHeadless(jobController: jobController)
         }
     }
 
@@ -81,7 +84,9 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
         }
         jobController.onFinish = { [weak windowController] state in
             windowController?.finish(state)
-            if VOCRAppLifecyclePolicy.shouldTerminateAfterFinish(state) {
+            if ProcessInfo.processInfo.environment["VOCR_HEADLESS"] == "1" {
+                NSApp.terminate(nil)
+            } else if VOCRAppLifecyclePolicy.shouldTerminateAfterFinish(state) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     NSApp.terminate(nil)
                 }
@@ -101,6 +106,26 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
         }
         statusItemController.onCancel = { [weak jobController] in
             jobController?.cancel()
+        }
+    }
+
+    private func startHeadless(jobController: OCRJobController) {
+        do {
+            let selection = try OCRJobOutputSelection(
+                writesText: false,
+                writesPDF: true,
+                includesPageBreaks: false
+            )
+            let parallelism = try OCRJobParallelism(count: VOCRWindowController.defaultWorkerCount)
+            jobController.start(
+                selection: selection,
+                parallelism: parallelism,
+                recognitionLevel: .accurate,
+                renderScale: .quality
+            )
+        } catch {
+            jobController.onLog(error.localizedDescription)
+            NSApp.terminate(nil)
         }
     }
 }
