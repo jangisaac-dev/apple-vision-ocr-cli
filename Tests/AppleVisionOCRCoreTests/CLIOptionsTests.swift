@@ -264,15 +264,17 @@ final class CLIOptionsTests: XCTestCase {
         }
     }
 
-    func testSplitWorkersRejectPageBreaks() {
-        XCTAssertThrowsError(try CLIOptions.parse([
+    func testSplitWorkersAllowPageBreaksWithTextOnly() throws {
+        let options = try CLIOptions.parse([
             "/tmp/input.pdf",
             "--txt-only",
             "--page-breaks",
             "--split-workers", "4"
-        ])) { error in
-            XCTAssertEqual((error as? AppleVisionOCRError)?.exitCode, .invalidUsage)
-        }
+        ])
+
+        XCTAssertEqual(options.splitWorkers, 4)
+        XCTAssertTrue(options.includePageBreaks)
+        XCTAssertEqual(options.outputMode, .pageDividedText)
     }
 
     func testPageRangeRequiresTextOnly() {

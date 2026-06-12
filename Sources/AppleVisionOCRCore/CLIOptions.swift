@@ -116,9 +116,6 @@ public struct CLIOptions {
             guard outputMode.writesText != outputMode.writesPDF else {
                 throw AppleVisionOCRError.invalidUsage("--split-workers cannot be combined with simultaneous text and PDF output")
             }
-            guard !outputMode.includesPageBreaks else {
-                throw AppleVisionOCRError.invalidUsage("--split-workers cannot be combined with --page-breaks")
-            }
         }
         if pageRange != nil {
             guard outputMode.writesText != outputMode.writesPDF else {
