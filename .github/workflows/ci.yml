@@ -1,0 +1,16 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-latest
+    env:
+      SWIFTPM_HOME: .build/swiftpm-home
+      CLANG_MODULE_CACHE_PATH: .build/module-cache
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build -c release
+      - run: swift test

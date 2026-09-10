@@ -96,6 +96,7 @@ public struct OCRJobOptions: Equatable {
     public let recognitionLevel: OCRRecognitionLevel
     public let pageParallelism: OCRJobParallelism
     public let renderScale: OCRRenderScale
+    public let usesLanguageCorrection: Bool
     public let pageRange: ClosedRange<Int>?
 
     public init(
@@ -107,6 +108,7 @@ public struct OCRJobOptions: Equatable {
         recognitionLevel: OCRRecognitionLevel = .accurate,
         pageParallelism: OCRJobParallelism = .default,
         renderScale: OCRRenderScale = .quality,
+        usesLanguageCorrection: Bool = true,
         pageRange: ClosedRange<Int>? = nil
     ) throws {
         if outputMode.writesPDF, pdfOutputURL == nil {
@@ -130,6 +132,7 @@ public struct OCRJobOptions: Equatable {
         self.recognitionLevel = recognitionLevel
         self.pageParallelism = pageParallelism
         self.renderScale = renderScale
+        self.usesLanguageCorrection = usesLanguageCorrection
         self.pageRange = pageRange
     }
 }

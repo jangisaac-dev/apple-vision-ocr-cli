@@ -72,6 +72,57 @@ final class SplitProcessOCRRunnerTests: XCTestCase {
         XCTAssertEqual(combined, "first chunk\nsecond chunk")
     }
 
+    func testWriteCombinedTextRefusesToReplaceExistingOutput() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let chunkURL = directory.appendingPathComponent("chunk.txt")
+        let outputURL = directory.appendingPathComponent("combined.txt")
+        try "new text".write(to: chunkURL, atomically: true, encoding: .utf8)
+        try "existing text".write(to: outputURL, atomically: true, encoding: .utf8)
+
+        XCTAssertThrowsError(try SplitProcessOCRRunner.writeCombinedText([chunkURL], to: outputURL)) { error in
+            XCTAssertEqual(
+                error as? AppleVisionOCRError,
+                .outputAlreadyExists("output already exists: \(outputURL.path)")
+            )
+        }
+        XCTAssertEqual(try String(contentsOf: outputURL, encoding: .utf8), "existing text")
+    }
+
+    func testCombinedOutputRefusesToReplaceExistingPDFOrText() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let inputURL = directory.appendingPathComponent("input.pdf")
+        let pdfOutputURL = directory.appendingPathComponent("output.pdf")
+        let textOutputURL = directory.appendingPathComponent("output.txt")
+        let runner = SplitProcessOCRRunner(executableURL: directory.appendingPathComponent("unused-worker"))
+        try makePDF(at: inputURL, pageCount: 1)
+
+        for existingURL in [pdfOutputURL, textOutputURL] {
+            try Data().write(to: existingURL)
+            XCTAssertThrowsError(try runner.run(
+                inputURL: inputURL,
+                output: .searchablePDFAndText(pdf: pdfOutputURL, text: textOutputURL),
+                workerCount: 2,
+                languages: ["en"],
+                recognitionLevel: .fast,
+                renderScale: .compact
+            )) { error in
+                XCTAssertEqual(
+                    error as? AppleVisionOCRError,
+                    .outputAlreadyExists("output already exists: \(existingURL.path)")
+                )
+            }
+            try FileManager.default.removeItem(at: existingURL)
+        }
+    }
+
     private func makePDF(at url: URL, pageCount: Int) throws {
         var mediaBox = CGRect(x: 0, y: 0, width: 100, height: 100)
         guard let context = CGContext(url as CFURL, mediaBox: &mediaBox, nil) else {

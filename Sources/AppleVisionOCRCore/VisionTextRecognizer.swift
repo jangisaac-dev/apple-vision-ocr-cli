@@ -12,7 +12,8 @@ protocol TextRecognizing {
     func recognize(
         image: CGImage,
         languages: [String],
-        recognitionLevel: OCRRecognitionLevel
+        recognitionLevel: OCRRecognitionLevel,
+        usesLanguageCorrection: Bool
     ) throws -> [RecognizedTextBox]
 }
 
@@ -20,12 +21,13 @@ final class VisionTextRecognizer: TextRecognizing {
     func recognize(
         image: CGImage,
         languages: [String],
-        recognitionLevel: OCRRecognitionLevel
+        recognitionLevel: OCRRecognitionLevel,
+        usesLanguageCorrection: Bool
     ) throws -> [RecognizedTextBox] {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = recognitionLevel.visionLevel
         request.recognitionLanguages = VisionLanguageResolver.resolve(languages)
-        request.usesLanguageCorrection = true
+        request.usesLanguageCorrection = usesLanguageCorrection
 
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         do {

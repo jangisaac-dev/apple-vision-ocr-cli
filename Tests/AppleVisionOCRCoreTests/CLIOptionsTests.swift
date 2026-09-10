@@ -25,6 +25,7 @@ final class CLIOptionsTests: XCTestCase {
         XCTAssertEqual(options.recognitionLevel, .accurate)
         XCTAssertEqual(options.pageParallelism, .default)
         XCTAssertEqual(options.renderScale, .quality)
+        XCTAssertTrue(options.usesLanguageCorrection)
         XCTAssertNil(options.pageRange)
         XCTAssertNil(options.splitWorkers)
         XCTAssertFalse(options.dryRun)
@@ -38,6 +39,7 @@ final class CLIOptionsTests: XCTestCase {
             "--recognition-level", "accurate",
             "--page-parallelism", "16",
             "--render-scale", "1.5",
+            "--no-language-correction",
             "--dry-run"
         ])
 
@@ -46,6 +48,7 @@ final class CLIOptionsTests: XCTestCase {
         XCTAssertEqual(options.recognitionLevel, .accurate)
         XCTAssertEqual(options.pageParallelism.count, 16)
         XCTAssertEqual(options.renderScale, .balanced)
+        XCTAssertFalse(options.usesLanguageCorrection)
         XCTAssertTrue(options.dryRun)
     }
 
@@ -204,14 +207,17 @@ final class CLIOptionsTests: XCTestCase {
         }
     }
 
-    func testSplitWorkersRejectsCombinedTextAndPDF() {
-        XCTAssertThrowsError(try CLIOptions.parse([
+    func testParsesSplitWorkersForCombinedTextAndPDF() throws {
+        let options = try CLIOptions.parse([
             "/tmp/input.pdf",
             "--txt-output", "/tmp/x.txt",
             "--split-workers", "4"
-        ])) { error in
-            XCTAssertEqual((error as? AppleVisionOCRError)?.exitCode, .invalidUsage)
-        }
+        ])
+
+        XCTAssertEqual(options.splitWorkers, 4)
+        XCTAssertEqual(options.outputURL?.path, "/tmp/input_ocr.pdf")
+        XCTAssertEqual(options.txtOutputURL?.path, "/tmp/x.txt")
+        XCTAssertEqual(options.outputMode, .textAndSearchablePDF)
     }
 
     func testParsesPageRangeForTextOnly() throws {
@@ -254,14 +260,15 @@ final class CLIOptionsTests: XCTestCase {
         }
     }
 
-    func testSplitWorkersRequireTextOnly() {
-        XCTAssertThrowsError(try CLIOptions.parse([
+    func testSplitWorkersAllowCombinedDefaultTextAndPDF() throws {
+        let options = try CLIOptions.parse([
             "/tmp/input.pdf",
             "--txt",
             "--split-workers", "4"
-        ])) { error in
-            XCTAssertEqual((error as? AppleVisionOCRError)?.exitCode, .invalidUsage)
-        }
+        ])
+
+        XCTAssertEqual(options.splitWorkers, 4)
+        XCTAssertEqual(options.outputMode, .textAndSearchablePDF)
     }
 
     func testSplitWorkersAllowPageBreaksWithTextOnly() throws {
@@ -277,14 +284,15 @@ final class CLIOptionsTests: XCTestCase {
         XCTAssertEqual(options.outputMode, .pageDividedText)
     }
 
-    func testPageRangeRequiresTextOnly() {
-        XCTAssertThrowsError(try CLIOptions.parse([
+    func testPageRangeAllowsCombinedTextAndPDF() throws {
+        let options = try CLIOptions.parse([
             "/tmp/input.pdf",
             "--txt",
             "--page-range", "1-10"
-        ])) { error in
-            XCTAssertEqual((error as? AppleVisionOCRError)?.exitCode, .invalidUsage)
-        }
+        ])
+
+        XCTAssertEqual(options.pageRange, 1...10)
+        XCTAssertEqual(options.outputMode, .textAndSearchablePDF)
     }
 
     func testTextOnlyAndDefaultTextOutputAreMutuallyExclusive() {

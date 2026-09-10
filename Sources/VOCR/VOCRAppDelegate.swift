@@ -39,7 +39,7 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func wire(windowController: VOCRWindowController, jobController: OCRJobController) {
-        windowController.onStart = { [weak jobController] selection, parallelism, recognitionLevel, renderScale, shouldRunInBackground in
+        windowController.onStart = { [weak jobController] selection, parallelism, recognitionLevel, renderScale, usesLanguageCorrection, shouldRunInBackground in
             if shouldRunInBackground {
                 NSApp.setActivationPolicy(.accessory)
             } else {
@@ -50,7 +50,8 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
                 selection: selection,
                 parallelism: parallelism,
                 recognitionLevel: recognitionLevel,
-                renderScale: renderScale
+                renderScale: renderScale,
+                usesLanguageCorrection: usesLanguageCorrection
             )
         }
         windowController.onPause = { [weak jobController] in
@@ -133,7 +134,8 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
                 selection: selection,
                 parallelism: parallelism,
                 recognitionLevel: .accurate,
-                renderScale: .quality
+                renderScale: .quality,
+                usesLanguageCorrection: true
             )
             switch mode {
             case "cancel":

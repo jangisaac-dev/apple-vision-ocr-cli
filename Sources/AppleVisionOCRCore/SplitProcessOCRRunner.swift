@@ -6,6 +6,7 @@ public final class SplitProcessOCRRunner {
     public enum Output: Equatable {
         case searchablePDF(URL)
         case text(URL)
+        case searchablePDFAndText(pdf: URL, text: URL)
     }
 
     public struct ProgressUpdate: Equatable {
@@ -28,6 +29,7 @@ public final class SplitProcessOCRRunner {
         languages: [String],
         recognitionLevel: OCRRecognitionLevel,
         renderScale: OCRRenderScale,
+        usesLanguageCorrection: Bool = true,
         includePageBreaks: Bool = false,
         control: OCRJobControl = OCRJobControl(),
         onProgress: ((ProgressUpdate) -> Void)? = nil
@@ -49,11 +51,22 @@ public final class SplitProcessOCRRunner {
         try fileManager.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: temporaryRoot) }
 
+        if case .searchablePDFAndText(let pdfOutputURL, let textOutputURL) = output {
+            guard !fileManager.fileExists(atPath: pdfOutputURL.path) else {
+                throw AppleVisionOCRError.outputAlreadyExists("output already exists: \(pdfOutputURL.path)")
+            }
+            guard !fileManager.fileExists(atPath: textOutputURL.path) else {
+                throw AppleVisionOCRError.outputAlreadyExists("output already exists: \(textOutputURL.path)")
+            }
+        }
+
         let chunks = Self.planChunks(pageCount: pageCount, workerCount: effectiveWorkers).enumerated().map {
-            Chunk(
+            let baseURL = outputDirectory.appendingPathComponent("chunk-\($0.offset)")
+            return Chunk(
                 index: $0.offset,
                 range: $0.element,
-                outputURL: outputDirectory.appendingPathComponent("chunk-\($0.offset).\(output.pathExtension)")
+                outputURL: baseURL.appendingPathExtension(output.pathExtension),
+                textOutputURL: output.textPathExtension.map { baseURL.appendingPathExtension($0) }
             )
         }
 
@@ -64,6 +77,7 @@ public final class SplitProcessOCRRunner {
             languages: languages,
             recognitionLevel: recognitionLevel,
             renderScale: renderScale,
+            usesLanguageCorrection: usesLanguageCorrection,
             includePageBreaks: includePageBreaks,
             totalPages: pageCount,
             control: control,
@@ -77,7 +91,19 @@ public final class SplitProcessOCRRunner {
         case .searchablePDF(let outputURL):
             try Self.mergePDFs(chunks.map(\.outputURL), to: outputURL, fileManager: fileManager)
         case .text(let outputURL):
-            try Self.writeCombinedText(chunks.map(\.outputURL), to: outputURL)
+            try Self.writeCombinedText(chunks.map(\.outputURL), to: outputURL, fileManager: fileManager)
+        case .searchablePDFAndText(let pdfOutputURL, let textOutputURL):
+            try Self.mergePDFs(chunks.map(\.outputURL), to: pdfOutputURL, fileManager: fileManager)
+            do {
+                try Self.writeCombinedText(
+                    chunks.map { $0.textOutputURL! },
+                    to: textOutputURL,
+                    fileManager: fileManager
+                )
+            } catch {
+                try? fileManager.removeItem(at: pdfOutputURL)
+                throw error
+            }
         }
     }
 
@@ -126,7 +152,15 @@ public final class SplitProcessOCRRunner {
         }
     }
 
-    static func writeCombinedText(_ textURLs: [URL], to outputURL: URL) throws {
+    static func writeCombinedText(
+        _ textURLs: [URL],
+        to outputURL: URL,
+        fileManager: FileManager = .default
+    ) throws {
+        guard !fileManager.fileExists(atPath: outputURL.path) else {
+            throw AppleVisionOCRError.outputAlreadyExists("output already exists: \(outputURL.path)")
+        }
+
         var combined = ""
         for (index, textURL) in textURLs.enumerated() {
             if index > 0 {
@@ -135,9 +169,16 @@ public final class SplitProcessOCRRunner {
             combined += try String(contentsOf: textURL, encoding: .utf8)
         }
 
+        let directory = outputURL.deletingLastPathComponent()
+        let temporaryURL = directory
+            .appendingPathComponent(".\(outputURL.deletingPathExtension().lastPathComponent).\(UUID().uuidString)")
+            .appendingPathExtension("tmp.txt")
+
         do {
-            try combined.write(to: outputURL, atomically: true, encoding: .utf8)
+            try combined.write(to: temporaryURL, atomically: false, encoding: .utf8)
+            try fileManager.moveItem(at: temporaryURL, to: outputURL)
         } catch {
+            try? fileManager.removeItem(at: temporaryURL)
             throw AppleVisionOCRError.pdfFailure("failed to write text output: \(outputURL.path)")
         }
     }
@@ -146,11 +187,13 @@ public final class SplitProcessOCRRunner {
         let index: Int
         let range: ClosedRange<Int>
         let outputURL: URL
+        let textOutputURL: URL?
     }
 
     private struct Worker {
         let chunk: Chunk
         let process: Process
+        let spawnTime: Date
     }
 
     private final class ProgressState {
@@ -201,6 +244,7 @@ public final class SplitProcessOCRRunner {
         languages: [String],
         recognitionLevel: OCRRecognitionLevel,
         renderScale: OCRRenderScale,
+        usesLanguageCorrection: Bool,
         includePageBreaks: Bool,
         totalPages: Int,
         control: OCRJobControl,
@@ -228,13 +272,18 @@ public final class SplitProcessOCRRunner {
                     languages: languages,
                     recognitionLevel: recognitionLevel,
                     renderScale: renderScale,
+                    usesLanguageCorrection: usesLanguageCorrection,
                     includePageBreaks: includePageBreaks
                 )
                 process.standardOutput = stdoutPipe
                 process.standardError = stderrPipe
+                process.environment = ProcessInfo.processInfo.environment.merging([
+                    "APPLE_VISION_OCR_PARENT_PID": String(ProcessInfo.processInfo.processIdentifier)
+                ]) { _, childValue in childValue }
 
+                let spawnTime = Date()
                 try process.run()
-                workers.append(Worker(chunk: chunk, process: process))
+                workers.append(Worker(chunk: chunk, process: process, spawnTime: spawnTime))
 
                 Self.readLines(from: stdoutPipe, on: readerQueue, group: readerGroup) { line in
                     if let update = progressState.recordLine(line, workerIndex: chunk.index, isStderr: false) {
@@ -249,20 +298,16 @@ public final class SplitProcessOCRRunner {
             }
 
             let failedWorker = try waitForWorkers(workers, control: control)
-            readerGroup.wait()
             if let failedWorker {
+                _ = readerGroup.wait(timeout: .now() + .seconds(2))
                 throw AppleVisionOCRError.pdfFailure(
                     "split worker \(failedWorker.chunk.index) failed: \(progressState.stderrTail(for: failedWorker.chunk.index))"
                 )
             }
-        } catch {
-            for worker in workers where worker.process.isRunning {
-                worker.process.terminate()
-            }
-            for worker in workers where worker.process.isRunning {
-                worker.process.waitUntilExit()
-            }
             readerGroup.wait()
+        } catch {
+            terminateAndWait(for: workers)
+            _ = readerGroup.wait(timeout: .now() + .seconds(2))
             throw error
         }
     }
@@ -272,6 +317,8 @@ public final class SplitProcessOCRRunner {
         control: OCRJobControl
     ) throws -> Worker? {
         var isSuspended = false
+        var reportedWorkerIndices = Set<Int>()
+        let timingEnabled = !(ProcessInfo.processInfo.environment["APPLE_VISION_OCR_SPLIT_TIMING"] ?? "").isEmpty
 
         while true {
             if control.isPaused && !isSuspended {
@@ -299,6 +346,21 @@ public final class SplitProcessOCRRunner {
                 throw AppleVisionOCRError.pdfFailure("OCR job canceled")
             }
 
+            if timingEnabled {
+                for worker in workers where !worker.process.isRunning &&
+                    reportedWorkerIndices.insert(worker.chunk.index).inserted {
+                    let seconds = Date().timeIntervalSince(worker.spawnTime)
+                    let message = String(
+                        format: "[split] worker %d pages %d-%d done in %.2fs\n",
+                        worker.chunk.index,
+                        worker.chunk.range.lowerBound,
+                        worker.chunk.range.upperBound,
+                        seconds
+                    )
+                    FileHandle.standardError.write(Data(message.utf8))
+                }
+            }
+
             if let failedWorker = workers.first(where: {
                 !$0.process.isRunning && $0.process.terminationStatus != ExitCode.success.rawValue
             }) {
@@ -308,12 +370,7 @@ public final class SplitProcessOCRRunner {
                     }
                     isSuspended = false
                 }
-                for worker in workers where worker.process.isRunning {
-                    worker.process.terminate()
-                }
-                for worker in workers where worker.process.isRunning {
-                    worker.process.waitUntilExit()
-                }
+                terminateAndWait(for: workers)
                 return failedWorker
             }
 
@@ -325,6 +382,24 @@ public final class SplitProcessOCRRunner {
         }
     }
 
+    private func terminateAndWait(for workers: [Worker]) {
+        for worker in workers where worker.process.isRunning {
+            worker.process.terminate()
+        }
+
+        let deadline = Date().addingTimeInterval(2)
+        while workers.contains(where: { $0.process.isRunning }) && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+
+        for worker in workers where worker.process.isRunning {
+            kill(worker.process.processIdentifier, SIGKILL)
+        }
+        for worker in workers where worker.process.isRunning {
+            worker.process.waitUntilExit()
+        }
+    }
+
     private func childArguments(
         for chunk: Chunk,
         inputURL: URL,
@@ -332,14 +407,23 @@ public final class SplitProcessOCRRunner {
         languages: [String],
         recognitionLevel: OCRRecognitionLevel,
         renderScale: OCRRenderScale,
+        usesLanguageCorrection: Bool,
         includePageBreaks: Bool
     ) -> [String] {
-        let commonArguments = [
+        var commonArguments = [
             "--lang", languages.joined(separator: ","),
             "--recognition-level", recognitionLevel.rawValue,
             "--render-scale", String(renderScale.value),
             "--page-range", "\(chunk.range.lowerBound)-\(chunk.range.upperBound)"
         ]
+        if !usesLanguageCorrection {
+            commonArguments.append("--no-language-correction")
+        }
+        if let pageParallelism = ProcessInfo.processInfo.environment[
+            "APPLE_VISION_OCR_SPLIT_CHILD_PAGE_PARALLELISM"
+        ] {
+            commonArguments += ["--page-parallelism", pageParallelism]
+        }
 
         switch output {
         case .searchablePDF:
@@ -352,6 +436,16 @@ public final class SplitProcessOCRRunner {
                 inputURL.path,
                 "--txt-only",
                 "--txt-output", chunk.outputURL.path
+            ] + commonArguments
+            if includePageBreaks {
+                arguments.append("--page-breaks")
+            }
+            return arguments
+        case .searchablePDFAndText:
+            var arguments = [
+                inputURL.path,
+                "--output", chunk.outputURL.path,
+                "--txt-output", chunk.textOutputURL!.path
             ] + commonArguments
             if includePageBreaks {
                 arguments.append("--page-breaks")
@@ -432,6 +526,17 @@ private extension SplitProcessOCRRunner.Output {
         case .searchablePDF:
             return "pdf"
         case .text:
+            return "txt"
+        case .searchablePDFAndText:
+            return "pdf"
+        }
+    }
+
+    var textPathExtension: String? {
+        switch self {
+        case .searchablePDF, .text:
+            return nil
+        case .searchablePDFAndText:
             return "txt"
         }
     }

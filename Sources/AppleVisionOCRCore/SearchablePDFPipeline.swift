@@ -109,6 +109,7 @@ public final class SearchablePDFPipeline {
             recognitionLevel: options.recognitionLevel,
             pageParallelism: options.pageParallelism,
             renderScale: options.renderScale,
+            usesLanguageCorrection: options.usesLanguageCorrection,
             pageRange: options.pageRange
         )
 
@@ -139,7 +140,7 @@ public final class SearchablePDFPipeline {
         }
         let pageNumbers = try selectedPageNumbers(for: options, totalPageCount: document.numberOfPages)
 
-        let textPages = try pagesWithExistingTextIfNeeded(for: options)
+        let textPages = try pagesWithExistingTextIfNeeded(for: options, pageNumbers: pageNumbers)
         if !textPages.isEmpty {
             progress(OCRProgressEvent(
                 stage: .starting,
@@ -352,7 +353,8 @@ public final class SearchablePDFPipeline {
                         let recognizedText = try recognizer.recognize(
                             image: item.rendered.image,
                             languages: options.languages,
-                            recognitionLevel: options.recognitionLevel
+                            recognitionLevel: options.recognitionLevel,
+                            usesLanguageCorrection: options.usesLanguageCorrection
                         )
 
                         let overlays = recognizedText.map {
@@ -434,11 +436,11 @@ public final class SearchablePDFPipeline {
         }
     }
 
-    private func pagesWithExistingTextIfNeeded(for options: OCRJobOptions) throws -> Set<Int> {
+    private func pagesWithExistingTextIfNeeded(for options: OCRJobOptions, pageNumbers: [Int]) throws -> Set<Int> {
         guard options.outputMode.writesPDF else {
             return []
         }
-        let report = try textPresenceDetector.inspect(options.inputURL)
+        let report = try textPresenceDetector.inspect(options.inputURL, pageNumbers: pageNumbers)
         return Set(report.textPageNumbers)
     }
 

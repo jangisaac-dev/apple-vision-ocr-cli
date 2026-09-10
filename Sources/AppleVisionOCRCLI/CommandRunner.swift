@@ -46,7 +46,21 @@ public final class CommandRunner {
                 }
 
                 if options.splitWorkers != nil {
-                    if options.outputURL != nil {
+                    if let outputURL = options.outputURL,
+                       let textOutputURL = options.txtOutputURL,
+                       let splitWorkers = options.splitWorkers {
+                        stderr("Running split PDF and text OCR with \(splitWorkers) worker processes")
+                        try SplitProcessOCRRunner(executableURL: executableURL).run(
+                            inputURL: options.inputURL,
+                            output: .searchablePDFAndText(pdf: outputURL, text: textOutputURL),
+                            workerCount: splitWorkers,
+                            languages: options.languages,
+                            recognitionLevel: options.recognitionLevel,
+                            renderScale: options.renderScale,
+                            usesLanguageCorrection: options.usesLanguageCorrection,
+                            includePageBreaks: options.includePageBreaks
+                        )
+                    } else if options.outputURL != nil {
                         try ChunkedPDFOCRRunner(
                             options: options,
                             executableURL: executableURL,
@@ -83,7 +97,7 @@ public final class CommandRunner {
 
     private static let helpText = """
     Usage:
-      apple-vision-ocr input.pdf [--output output.pdf] [--txt|--txt-output output.txt|--txt-only] [--page-breaks] [--lang ko,en] [--recognition-level accurate|fast] [--page-parallelism 1-16] [--render-scale 1.25|1.5|2.0] [--page-range START-END] [--split-workers 2-16] [--dry-run]
+      apple-vision-ocr input.pdf [--output output.pdf] [--txt|--txt-output output.txt|--txt-only] [--page-breaks] [--lang ko,en] [--recognition-level accurate|fast] [--page-parallelism 1-16] [--render-scale 1.25|1.5|2.0] [--no-language-correction] [--page-range START-END] [--split-workers 2-16] [--dry-run]
       apple-vision-ocr --help
       apple-vision-ocr --version
 
@@ -97,8 +111,9 @@ public final class CommandRunner {
       --recognition-level VALUE  accurate or fast. Defaults to accurate. Fast supports a limited language set.
       --page-parallelism N       OCR up to N pages at once. Defaults to 8.
       --render-scale N           PDF render scale: 2.0 quality, 1.5 balanced Korean speed, 1.25 compact.
+      --no-language-correction   Disable Vision language correction for faster OCR.
       --page-range START-END     OCR only a 1-based page range.
-      --split-workers N          Split OCR across N child processes for text-only OR PDF output.
+      --split-workers N          Split OCR across N child processes.
       --dry-run                  Validate arguments and print the output path without writing.
       --help                     Show this help text.
       --version                  Show the version.

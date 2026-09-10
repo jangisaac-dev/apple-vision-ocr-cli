@@ -49,6 +49,17 @@ final class VOCRAppLifecyclePolicyTests: XCTestCase {
     }
 
     @MainActor
+    func testOptionWindowContainsDisableLanguageCorrectionCheckbox() {
+        _ = NSApplication.shared
+        let controller = VOCRWindowController(files: [])
+
+        let hasCheckbox = controller.window?.contentView
+            .flatMap { Self.containsButton(titled: "언어 보정 끄기 (속도 우선)", in: $0) } ?? false
+
+        XCTAssertTrue(hasCheckbox)
+    }
+
+    @MainActor
     func testOptionWindowLabelsParallelismAsWorkerProcesses() {
         _ = NSApplication.shared
         let controller = VOCRWindowController(files: [])

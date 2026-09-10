@@ -151,7 +151,8 @@ private final class TrackingTextRecognizer: TextRecognizing {
     func recognize(
         image: CGImage,
         languages: [String],
-        recognitionLevel: OCRRecognitionLevel
+        recognitionLevel: OCRRecognitionLevel,
+        usesLanguageCorrection: Bool
     ) throws -> [RecognizedTextBox] {
         lock.lock()
         activeCalls += 1

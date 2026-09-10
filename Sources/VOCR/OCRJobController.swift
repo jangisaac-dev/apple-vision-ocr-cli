@@ -72,7 +72,8 @@ final class OCRJobController {
         selection: OCRJobOutputSelection,
         parallelism: OCRJobParallelism,
         recognitionLevel: OCRRecognitionLevel,
-        renderScale: OCRRenderScale
+        renderScale: OCRRenderScale,
+        usesLanguageCorrection: Bool
     ) {
         guard !isRunning else {
             return
@@ -97,7 +98,12 @@ final class OCRJobController {
         ))
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.run(selection: selection, recognitionLevel: recognitionLevel, renderScale: renderScale)
+            self?.run(
+                selection: selection,
+                recognitionLevel: recognitionLevel,
+                renderScale: renderScale,
+                usesLanguageCorrection: usesLanguageCorrection
+            )
         }
     }
 
@@ -154,7 +160,8 @@ final class OCRJobController {
     private func run(
         selection: OCRJobOutputSelection,
         recognitionLevel: OCRRecognitionLevel,
-        renderScale: OCRRenderScale
+        renderScale: OCRRenderScale,
+        usesLanguageCorrection: Bool
     ) {
         do {
             let pageCounts = try files.map { try pageCount(for: $0) }
@@ -181,12 +188,9 @@ final class OCRJobController {
                 do {
                     let workerCount = currentParallelism().count
                     let canUseSplitRunner = splitRunner != nil
-                        && selection.writesText != selection.writesPDF
                         && workerCount > 1
 
-                    if selection.writesText && selection.writesPDF {
-                        log("TXT+PDF 동시 출력은 단일 프로세스로 실행합니다.")
-                    } else if splitRunner == nil {
+                    if splitRunner == nil {
                         log("apple-vision-ocr CLI를 찾지 못해 단일 프로세스로 실행합니다.")
                     }
 
@@ -197,7 +201,8 @@ final class OCRJobController {
                         outputMode: selection.outputMode,
                         recognitionLevel: recognitionLevel,
                         pageParallelism: currentParallelism(),
-                        renderScale: renderScale
+                        renderScale: renderScale,
+                        usesLanguageCorrection: usesLanguageCorrection
                     )
 
                     log("시작: \(job.inputURL.lastPathComponent)")
@@ -211,6 +216,7 @@ final class OCRJobController {
                             languages: jobOptions.languages,
                             recognitionLevel: recognitionLevel,
                             renderScale: renderScale,
+                            usesLanguageCorrection: usesLanguageCorrection,
                             includePageBreaks: selection.includesPageBreaks,
                             control: control
                         ) { [weak self] update in
@@ -284,6 +290,12 @@ final class OCRJobController {
     }
 
     private func splitOutput(for output: VOCRJobOutput, selection: OCRJobOutputSelection) throws -> SplitProcessOCRRunner.Output {
+        if selection.writesPDF,
+           selection.writesText,
+           let pdfOutputURL = output.pdfOutputURL,
+           let textOutputURL = output.textOutputURL {
+            return .searchablePDFAndText(pdf: pdfOutputURL, text: textOutputURL)
+        }
         if selection.writesPDF, let pdfOutputURL = output.pdfOutputURL {
             return .searchablePDF(pdfOutputURL)
         }

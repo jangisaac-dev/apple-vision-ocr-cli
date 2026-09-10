@@ -1,6 +1,6 @@
 # Current Status
 
-Updated: 2026-06-13
+Updated: 2026-09-09
 
 ## Current Objective
 
@@ -14,7 +14,7 @@ The current goal is:
 3. Improve Korean OCR throughput through safe knobs:
    - multi-process split workers for large documents (text-only and searchable PDF);
    - lower PDF render scale for optional speed-balanced runs.
-4. Note on in-process parallelism: Apple Vision serializes recognition within a single process, so `--page-parallelism` does not raise throughput (it pins ~1-2 cores). Multi-process `--split-workers` is the knob that actually uses the machine.
+4. Note on in-process parallelism: in a SINGLE process Apple Vision serializes recognition, so `--page-parallelism` does not raise throughput there (it pins ~1-2 cores). Multi-process `--split-workers` is the knob that actually uses the machine. Corrected 2026-09-09: this does NOT extend to split children — forcing child `pp=1` at 12 workers measured 10% SLOWER (54.42s vs 49.53s) while saving 9% RSS, so `pp` still buys render/recognition overlap inside each worker.
 
 ## Implemented
 
@@ -54,6 +54,43 @@ The current goal is:
 - 2026-06-13: VOCR is now a menu bar agent — `LSUIElement` added to the app Info.plist (package-vocr-app.sh) and all `NSApp.setActivationPolicy(.regular)` calls removed from VOCRAppDelegate, so the app never shows a Dock icon (verified at runtime: NSWorkspace reports `.accessory`, lsappinfo reports `type="UIElement"`). The split worker child processes were already `.prohibited` (no Dock). Net: repeated Finder OCR runs no longer pile up Dock icons. (Finder action still uses `open -n`; single-instance reuse was left out of scope since LSUIElement removes the Dock clutter on its own.)
 - 2026-06-13: GUI split path verified headless on the 24-page dense PDF. `VOCR_HEADLESS=1 VOCR_CLI_PATH=... ./.build/release/VOCR dense.pdf` produced `dense_ocr.pdf` (24 pages, 49415 extracted chars) in ~6.5s vs ~26s single-process. Also verified the packaged `VOCR.app` (no VOCR_CLI_PATH) self-locates the bundled sibling CLI and runs the split path in ~6.6s. Combined TXT+PDF still runs the in-process path.
 - 2026-06-13: Cancel and pause E2E-verified on the split path via headless seams (`VOCR_HEADLESS=cancel` / `=pause`) on a 60-page PDF (full run ~13.4s). Cancel: 12 workers spawned, cancel fired at 1.5s, all workers terminated within ~0.7s, app exited at 2.3s, no orphan processes, no output written. Pause/resume: workers observed in `T` (stopped) state for the entire pause window (1.5s–4s) via `ps stat`, returned to `R` after resume, and the job completed with full 60-page output (wall ~15.7s = work + pause). The `cancel`/`pause` headless modes are gated test affordances alongside the existing `VOCR_HEADLESS` seam.
+
+- 2026-09-09: Automated-test / speed / stability round. `swift build -c release` and
+  `swift test` passed: 99 tests, 0 failures (was 91). The suite went from 0.243s to ~5.7s
+  because the multi-process split path now has real process-spawning coverage instead of
+  only unit tests: `Tests/AppleVisionOCRCoreTests/SplitProcessOCRRunnerProcessTests.swift`
+  injects a fake worker via `executableURL` and asserts the FULL child argument vector per
+  chunk (the b8856d6 `--page-breaks` regression class), progress parsing, worker-failure
+  propagation with SIGKILL escalation, and cancel-while-paused with the worker verified in
+  the `T` state. Added `.github/workflows/ci.yml` (macOS: `swift build -c release` +
+  `swift test`; file created, remote run not yet confirmed),
+  `scripts/verify-equivalence.sh` (single vs split: TXT `cmp`, page-break TXT `cmp`, PDF
+  per-page extracted text, plus page-count and non-empty guards — all PASS on an 11-page
+  fixture), `scripts/make-bench-fixture.py` (deterministic raster-only fixture generator;
+  no benchmark fixture had ever been committed, so no earlier performance number was
+  reproducible) and `scripts/bench.sh` (median wall time, summed process-tree peak RSS,
+  per-worker finish spread).
+  Shutdown hardening: `writeCombinedText` now refuses to replace an existing output and
+  writes atomically (matching `mergePDFs`); worker termination escalates SIGTERM → 2s →
+  SIGKILL; the error-path reader wait is bounded; split children get
+  `APPLE_VISION_OCR_PARENT_PID` and self-exit when the parent dies. Known gaps left
+  explicit: the success-path `readerGroup.wait()` is still unbounded, and a child SIGSTOPped
+  when the parent dies still leaks (its watchdog is stopped too).
+  Measured on a 120-page dense raster fixture (18 cores), TXT output:
+  1 worker 343.75s / 1694 MB, 4 workers 103.78s / 2661 MB, 8 workers 65.27s / 3344 MB,
+  12 workers 53.99s / 4243 MB. Three planned speed levers all measured null:
+  worker-finish spread is only 11.5% of runtime (dynamic partitioning deferred);
+  shrinking the render queue 32 → 4 with 120 pages in ONE process saves 9 MB (1682 → 1673 MB)
+  and costs 6% wall time; limiting the existing-text scan to the selected page range makes
+  no difference on scanned input (55.95/53.66s before vs 55.50/54.31s after) because such
+  pages have no text layer to extract. The only measured win is worker count: interleaved
+  12-vs-14 pairs gave 45.85/43.67, 45.55/43.75, 49.92/47.25 — 14 wins all three by 4-5%;
+  16 is oversubscribed. Interleaved 13-vs-14 is a tie (39.91/42.64, 46.00/45.70,
+  46.03/46.97), so changing `VOCRWindowController.swift:6` from
+  `activeProcessorCount * 2 / 3` to `* 3 / 4` (13 on 18 cores) captures the win in one
+  line. NOT applied — single machine, single document.
+  Correction to an earlier note: `--page-parallelism` is NOT a no-op under split — child
+  `pp=1` at 12 workers is 10% slower (54.42s) while saving 9% RSS (3853 MB).
 
 ## Installed Artifact Verification
 

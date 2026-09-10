@@ -6,7 +6,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
         min(OCRJobParallelism.maximumCount, max(2, ProcessInfo.processInfo.activeProcessorCount * 2 / 3))
     }
 
-    var onStart: (OCRJobOutputSelection, OCRJobParallelism, OCRRecognitionLevel, OCRRenderScale, Bool) -> Void = { _, _, _, _, _ in }
+    var onStart: (OCRJobOutputSelection, OCRJobParallelism, OCRRecognitionLevel, OCRRenderScale, Bool, Bool) -> Void = { _, _, _, _, _, _ in }
     var onPause: () -> Void = {}
     var onResume: () -> Void = {}
     var onCancel: () -> Void = {}
@@ -28,6 +28,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
     private let pdfCheckbox = NSButton(checkboxWithTitle: "Searchable PDF 생성", target: nil, action: nil)
     private let recognitionLevelPopup = NSPopUpButton()
     private let renderScalePopup = NSPopUpButton()
+    private let disableLanguageCorrectionCheckbox = NSButton(checkboxWithTitle: "언어 보정 끄기 (속도 우선)", target: nil, action: nil)
     private let parallelismStepper = NSStepper()
     private let parallelismValueField = NSTextField(labelWithString: "\(VOCRWindowController.defaultWorkerCount)")
     private let runInBackgroundCheckbox = NSButton(checkboxWithTitle: "시작 후 백그라운드로 전환", target: nil, action: nil)
@@ -198,6 +199,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
             outputPreviewField,
             recognitionLevelStack,
             renderScaleStack,
+            disableLanguageCorrectionCheckbox,
             parallelismStack,
             runInBackgroundCheckbox,
             separator(),
@@ -245,6 +247,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
         pdfCheckbox.isEnabled = !isBusy
         recognitionLevelPopup.isEnabled = !isBusy
         renderScalePopup.isEnabled = !isBusy
+        disableLanguageCorrectionCheckbox.isEnabled = !isBusy
         parallelismStepper.isEnabled = !files.isEmpty
         runInBackgroundCheckbox.isEnabled = !isBusy
     }
@@ -343,6 +346,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
             let parallelism = try parallelism()
             let recognitionLevel = recognitionLevel()
             let renderScale = renderScale()
+            let usesLanguageCorrection = disableLanguageCorrectionCheckbox.state != .on
             let shouldRunInBackground = runInBackgroundCheckbox.state == .on
             if recognitionLevel == .fast {
                 recognitionLevelPopup.selectItem(at: 0)
@@ -356,7 +360,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
             if shouldRunInBackground {
                 window?.orderOut(nil)
             }
-            onStart(selection, parallelism, recognitionLevel, renderScale, shouldRunInBackground)
+            onStart(selection, parallelism, recognitionLevel, renderScale, usesLanguageCorrection, shouldRunInBackground)
         } catch OCRJobOptionError.missingOutput {
             appendLog("TXT 추출 또는 Searchable PDF 생성 중 하나 이상을 선택하세요.")
         } catch OCRJobOptionError.pageBreaksRequireText {

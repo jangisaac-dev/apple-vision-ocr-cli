@@ -10,6 +10,7 @@ public struct CLIOptions {
     public let recognitionLevel: OCRRecognitionLevel
     public let pageParallelism: OCRJobParallelism
     public let renderScale: OCRRenderScale
+    public let usesLanguageCorrection: Bool
     public let pageRange: ClosedRange<Int>?
     public let splitWorkers: Int?
     public let dryRun: Bool
@@ -29,6 +30,7 @@ public struct CLIOptions {
         var recognitionLevel = OCRRecognitionLevel.accurate
         var pageParallelism = OCRJobParallelism.default
         var renderScale = OCRRenderScale.quality
+        var usesLanguageCorrection = true
         var pageRange: ClosedRange<Int>?
         var splitWorkers: Int?
         var dryRun = false
@@ -62,6 +64,8 @@ public struct CLIOptions {
             case "--render-scale":
                 let value = try valueAfterOption(argument, arguments: arguments, index: &index)
                 renderScale = try OCRRenderScale.parse(value)
+            case "--no-language-correction":
+                usesLanguageCorrection = false
             case "--page-range":
                 let value = try valueAfterOption(argument, arguments: arguments, index: &index)
                 pageRange = try parsePageRange(value)
@@ -112,16 +116,6 @@ public struct CLIOptions {
             writesText: resolvedTextOutputURL != nil,
             includesPageBreaks: includePageBreaks
         )
-        if splitWorkers != nil {
-            guard outputMode.writesText != outputMode.writesPDF else {
-                throw AppleVisionOCRError.invalidUsage("--split-workers cannot be combined with simultaneous text and PDF output")
-            }
-        }
-        if pageRange != nil {
-            guard outputMode.writesText != outputMode.writesPDF else {
-                throw AppleVisionOCRError.invalidUsage("--page-range requires text-only or PDF-only output")
-            }
-        }
         try validateRecognitionLanguages(languages, recognitionLevel: recognitionLevel)
         return CLIOptions(
             inputURL: inputURL,
@@ -133,6 +127,7 @@ public struct CLIOptions {
             recognitionLevel: recognitionLevel,
             pageParallelism: pageParallelism,
             renderScale: renderScale,
+            usesLanguageCorrection: usesLanguageCorrection,
             pageRange: pageRange,
             splitWorkers: splitWorkers,
             dryRun: dryRun
