@@ -100,6 +100,16 @@ public final class SearchablePDFPipeline {
     }
 
     public func run(options: CLIOptions, progress: @escaping (String) -> Void = { _ in }) throws {
+        try run(options: options, control: OCRJobControl()) { event in
+            progress(event.message)
+        }
+    }
+
+    public func run(
+        options: CLIOptions,
+        control: OCRJobControl,
+        progress: @escaping ProgressHandler = { _ in }
+    ) throws {
         let jobOptions = try OCRJobOptions(
             inputURL: options.inputURL,
             pdfOutputURL: options.outputURL,
@@ -113,9 +123,7 @@ public final class SearchablePDFPipeline {
             pageRange: options.pageRange
         )
 
-        try run(job: jobOptions, control: OCRJobControl()) { event in
-            progress(event.message)
-        }
+        try run(job: jobOptions, control: control, progress: progress)
     }
 
     public func run(

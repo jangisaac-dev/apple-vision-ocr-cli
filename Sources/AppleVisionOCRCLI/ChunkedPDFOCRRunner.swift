@@ -19,7 +19,10 @@ final class ChunkedPDFOCRRunner {
         self.fileManager = fileManager
     }
 
-    func run() throws {
+    func run(
+        control: OCRJobControl,
+        onProgress: ((SplitProcessOCRRunner.ProgressUpdate) -> Void)? = nil
+    ) throws {
         guard let splitWorkers = options.splitWorkers,
               let outputURL = options.outputURL else {
             throw AppleVisionOCRError.invalidUsage("--split-workers requires PDF output")
@@ -34,7 +37,9 @@ final class ChunkedPDFOCRRunner {
             recognitionLevel: options.recognitionLevel,
             renderScale: options.renderScale,
             usesLanguageCorrection: options.usesLanguageCorrection,
-            pageRange: options.pageRange
+            pageRange: options.pageRange,
+            control: control,
+            onProgress: onProgress
         )
     }
 }

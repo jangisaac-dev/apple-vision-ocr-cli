@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- CLI prints `Progress: <completed>/<total> pages` on stderr after each page in every mode, including `--split-workers`.
+- CLI handles SIGINT/SIGTERM: stops worker processes, removes temporary split files, leaves no partial output, and exits 130/143.
+- `--help` documents the stdout/stderr contract and exit codes.
+- AI agent install and usage guide (`docs/ai-install-and-setup.md`: install without Xcode, portable use, CLI contract, background jobs) and `AGENTS.md`.
 - App icon for `VOCR.app`.
 - Korean translations: `README.ko.md`, `docs/user-guide.ko.md`.
 - Contributing guide, code of conduct, security policy, changelog, and issue/PR templates.

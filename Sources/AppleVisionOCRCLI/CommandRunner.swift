@@ -23,7 +23,7 @@ public final class CommandRunner {
         self.executableURL = executableURL ?? Self.defaultExecutableURL()
     }
 
-    public func run(arguments: [String]) -> ExitCode {
+    public func run(arguments: [String], control: OCRJobControl = OCRJobControl()) -> ExitCode {
         do {
             switch try CLICommand.parse(arguments) {
             case .help:
@@ -46,6 +46,9 @@ public final class CommandRunner {
                 }
 
                 if options.splitWorkers != nil {
+                    let reportProgress: (SplitProcessOCRRunner.ProgressUpdate) -> Void = { [stderr] update in
+                        stderr("Progress: \(update.completedPages)/\(update.totalPages) pages")
+                    }
                     if let outputURL = options.outputURL,
                        let textOutputURL = options.txtOutputURL,
                        let splitWorkers = options.splitWorkers {
@@ -59,24 +62,30 @@ public final class CommandRunner {
                             renderScale: options.renderScale,
                             usesLanguageCorrection: options.usesLanguageCorrection,
                             includePageBreaks: options.includePageBreaks,
-                            pageRange: options.pageRange
+                            pageRange: options.pageRange,
+                            control: control,
+                            onProgress: reportProgress
                         )
                     } else if options.outputURL != nil {
                         try ChunkedPDFOCRRunner(
                             options: options,
                             executableURL: executableURL,
                             stderr: stderr
-                        ).run()
+                        ).run(control: control, onProgress: reportProgress)
                     } else {
                         try ChunkedTextOCRRunner(
                             options: options,
                             executableURL: executableURL,
                             stderr: stderr
-                        ).run()
+                        ).run(control: control, onProgress: reportProgress)
                     }
                 } else {
-                    try pipeline.run(options: options) { [stderr] message in
-                        stderr(message)
+                    try pipeline.run(options: options, control: control) { [stderr] event in
+                        stderr(event.message)
+                        if event.stage == .recognizingText,
+                           event.message.hasPrefix("Completed page ") {
+                            stderr("Progress: \(event.completedPages)/\(event.totalPages) pages")
+                        }
                     }
                 }
                 if let outputURL = options.outputURL {
@@ -118,6 +127,20 @@ public final class CommandRunner {
       --dry-run                  Validate arguments and print the output path without writing.
       --help                     Show this help text.
       --version                  Show the version.
+
+    Output:
+      stdout = written output paths only, one per line; searchable PDF path first, then TXT path.
+      stderr = logs, Progress: N/M pages, and error: <message> on failure.
+
+    Exit codes:
+      0   success
+      1   invalid usage
+      2   input file problem
+      3   PDF/OCR failure
+      4   Vision failure
+      5   output already exists
+      130 canceled by SIGINT
+      143 canceled by SIGTERM
     """
 
     private static func defaultExecutableURL() -> URL {

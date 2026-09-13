@@ -263,7 +263,17 @@ public final class SplitProcessOCRRunner {
         let progressState = ProgressState(totalPages: totalPages)
         let readerGroup = DispatchGroup()
         let readerQueue = DispatchQueue(label: "apple-vision-ocr.split-process-reader", attributes: .concurrent)
+        let progressQueue = DispatchQueue(label: "apple-vision-ocr.split-process-progress")
         var workers: [Worker] = []
+
+        func reportProgress(_ update: ProgressUpdate) {
+            guard let onProgress else {
+                return
+            }
+            progressQueue.sync {
+                onProgress(update)
+            }
+        }
 
         do {
             for chunk in chunks {
@@ -297,12 +307,12 @@ public final class SplitProcessOCRRunner {
 
                 Self.readLines(from: stdoutPipe, on: readerQueue, group: readerGroup) { line in
                     if let update = progressState.recordLine(line, workerIndex: chunk.index, isStderr: false) {
-                        onProgress?(update)
+                        reportProgress(update)
                     }
                 }
                 Self.readLines(from: stderrPipe, on: readerQueue, group: readerGroup) { line in
                     if let update = progressState.recordLine(line, workerIndex: chunk.index, isStderr: true) {
-                        onProgress?(update)
+                        reportProgress(update)
                     }
                 }
             }

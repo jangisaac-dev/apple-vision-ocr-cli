@@ -19,7 +19,10 @@ final class ChunkedTextOCRRunner {
         self.fileManager = fileManager
     }
 
-    func run() throws {
+    func run(
+        control: OCRJobControl,
+        onProgress: ((SplitProcessOCRRunner.ProgressUpdate) -> Void)? = nil
+    ) throws {
         guard let splitWorkers = options.splitWorkers,
               let textOutputURL = options.txtOutputURL else {
             throw AppleVisionOCRError.invalidUsage("--split-workers requires --txt-only text output")
@@ -35,7 +38,9 @@ final class ChunkedTextOCRRunner {
             renderScale: options.renderScale,
             usesLanguageCorrection: options.usesLanguageCorrection,
             includePageBreaks: options.includePageBreaks,
-            pageRange: options.pageRange
+            pageRange: options.pageRange,
+            control: control,
+            onProgress: onProgress
         )
     }
 }

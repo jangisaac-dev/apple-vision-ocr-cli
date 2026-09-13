@@ -1,7 +1,131 @@
-# AI Install And Setup Guide
+# AI Agent Install And Usage Guide
 
 This guide is for coding agents, automation scripts, and CI-like local checks
-that need to install, verify, or package Apple Vision OCR without guessing.
+that need to install, run, verify, or package Apple Vision OCR without guessing.
+
+## Quick Start For Agents
+
+Download the prebuilt release, verify the checksum, remove quarantine, install, and run OCR.
+The commands pin `v1.1.0`; check the latest tag first with
+`gh release view --repo jangisaac-dev/apple-vision-ocr-cli --json tagName --jq .tagName`.
+
+```bash
+# Download prebuilt arm64 release and checksum (or: gh release download v1.1.0 --repo jangisaac-dev/apple-vision-ocr-cli)
+curl -LO https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/download/v1.1.0/VOCR-1.1.0-macos-arm64.zip
+curl -LO https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/download/v1.1.0/VOCR-1.1.0-macos-arm64.zip.sha256
+shasum -a 256 -c VOCR-1.1.0-macos-arm64.zip.sha256
+unzip -q VOCR-1.1.0-macos-arm64.zip
+xattr -dr com.apple.quarantine VOCR-1.1.0-macos-arm64
+VOCR-1.1.0-macos-arm64/install-vocr-quick-action.sh
+"$HOME/.local/bin/apple-vision-ocr" --version
+"$HOME/.local/bin/apple-vision-ocr" input.pdf --txt-only
+```
+
+> **Note:** Agents must run `install-vocr-quick-action.sh` directly (non-interactive, needs no Xcode when `VOCR.app` sits next to it). Do NOT run `Install.command`: it waits for an interactive key press.
+
+Portable use without installing (writes nothing to `~/Library` or `~/.local/bin`):
+Run `VOCR-1.1.0-macos-arm64/VOCR.app/Contents/MacOS/apple-vision-ocr` by absolute path.
+`--split-workers` and all other options work directly from there.
+
+## Choose An Install Path
+
+| Install Path | Requirements | What Gets Written | When To Use |
+| :--- | :--- | :--- | :--- |
+| **Prebuilt Install** | macOS 13+, Apple Silicon (arm64) | `~/Applications/VOCR.app`<br>`~/.local/bin/apple-vision-ocr`<br>`~/.local/bin/vocr-finder-action`<br>`~/.local/bin/apple-vision-ocr-finder-action`<br>`~/Library/Services/Apple Vision OCR.workflow` | Standard agent setup where persistent CLI access and Finder Quick Action are desired. |
+| **Portable (No Install)** | macOS 13+, Apple Silicon (arm64) | Nothing outside the unzipped directory (writes nothing to `~/Library` or `~/.local/bin`) | Ephemeral agents, throwaway containers, CI workers, or when avoiding system changes. |
+| **From Source** | macOS 13+, Xcode CLI tools / Xcode, Swift 5.9+ | `.build/` (and optionally user install paths if installer is run) | Modifying CLI/app code, custom local builds, or contributing. |
+
+> **Note:** Installer destination paths can be customized via environment variables:
+> `VOCR_APP_INSTALL_DIR="$HOME/Applications" VOCR_BIN_DIR="$HOME/.local/bin" VOCR-1.1.0-macos-arm64/install-vocr-quick-action.sh`
+> Because `~/.local/bin` may not be in default `PATH`, invoke the CLI using its absolute path `"$HOME/.local/bin/apple-vision-ocr"`.
+
+## Uninstall
+
+To uninstall, remove the installed paths (adjust them if you set `VOCR_APP_INSTALL_DIR` or `VOCR_BIN_DIR`):
+
+```bash
+rm -rf "$HOME/Applications/VOCR.app" \
+  "$HOME/.local/bin/apple-vision-ocr" \
+  "$HOME/.local/bin/vocr-finder-action" \
+  "$HOME/.local/bin/apple-vision-ocr-finder-action" \
+  "$HOME/Library/Services/Apple Vision OCR.workflow"
+```
+
+## CLI Contract
+
+- **Input Rules**:
+  - Exactly one input PDF per invocation. Passing a second input file is rejected with exit code `1`.
+  - The original input PDF is never modified under any circumstances.
+- **Output & Overwrite Rule**:
+  - Existing output files are never overwritten.
+  - If the target output path exists, the command terminates immediately with exit code `5` and prints `error: output already exists: <path>`.
+  - Always provide a fresh destination via `--output <path>` or `--txt-output <path>`.
+- **stdout**:
+  - Emits only the written output file paths, one per line.
+  - Searchable PDF path is printed first, followed by the TXT path (if text output was requested).
+- **stderr**:
+  - Human-readable status messages and logs.
+  - Machine-parseable progress updates after each completed page: `Progress: <completed>/<total> pages` (emitted across all execution modes, including `--split-workers`).
+  - Error messages prefixed with `error: <message>` upon failure.
+- **Exit Codes**:
+  | Exit Code | Name | Description |
+  | :--- | :--- | :--- |
+  | `0` | Success | OCR completed successfully. |
+  | `1` | Invalid usage | Invalid arguments, multiple input files, or unsupported flags. |
+  | `2` | Input file problem | Input file missing or not readable. |
+  | `3` | PDF/OCR failure | Input is not a valid PDF (`error: failed to open input PDF`), page rendering or output writing failed, or another unexpected error. |
+  | `4` | Vision failure | Apple Vision framework error during text recognition. |
+  | `5` | Output already exists | Destination file already exists (overwrite refused). |
+  | `130` | Canceled by SIGINT | Interrupted by SIGINT (Ctrl-C). |
+  | `143` | Canceled by SIGTERM | Terminated by `kill -TERM <pid>`. Temporary files cleaned up, no partial output left. |
+- **`--dry-run` Limits**:
+  - `--dry-run` validates arguments, checks input file existence, checks output path collisions, and prints planned output paths without running OCR.
+  - It does not open or parse the PDF (a non-PDF file still passes with exit `0` and fails later with exit `3`), does not perform text recognition, and does not prove Apple Vision works in the current environment (e.g. inside sandboxes).
+
+## Background And Long Jobs
+
+Run long jobs detached. The wrapper records the CLI's own PID (so you can signal it
+directly), its stdout/stderr, and its exit code:
+
+```bash
+CLI="$HOME/.local/bin/apple-vision-ocr"
+export JOB="$PWD/ocr-job"; mkdir -p "$JOB"   # exported: the inner sh reads it
+
+# Start: arguments after the script are "$0" "$@" inside sh -c.
+nohup sh -c '"$0" "$@" >"$JOB/out" 2>"$JOB/err" & echo $! >"$JOB/pid"; wait $!; echo $? >"$JOB/exit"' \
+  "$CLI" "$PWD/in.pdf" --txt-only --txt-output "$PWD/out.txt" --split-workers 8 \
+  </dev/null >/dev/null 2>&1 &
+
+# Poll progress (empty until the first page finishes).
+grep '^Progress:' "$JOB/err" | tail -n 1
+
+# Done when the exit file exists.
+[ -f "$JOB/exit" ] && { echo "exit=$(cat "$JOB/exit")"; cat "$JOB/out"; }
+
+# Cancel: signal the CLI PID. The job ends with exit 143, no workers or temp files left, no partial output.
+kill -TERM "$(cat "$JOB/pid")"
+```
+
+Notes:
+
+- Use absolute paths for the input and outputs; the wrapper does not change directory.
+- If `err` contains `error:`, read the exit code table above before retrying. Exit `5` means pick a new output path.
+
+## Recommended Options
+
+Tune throughput and accuracy according to document characteristics:
+
+| Option / Flag | Recommended Setting | Description |
+| :--- | :--- | :--- |
+| `--recognition-level` | `accurate` (default) | Required for Korean and default `ko,en`. `fast` only supports English. |
+| `--split-workers` | `2-16` (~2/3 of CPU cores; ~12 on 18-core Mac) | Multi-process parallelism across pages for large PDFs. In-process `--page-parallelism` does not add throughput due to Vision framework serialization. |
+| `--no-language-correction` | Included on clean scans | ~2.5x faster processing with near-identical accuracy on clean scans. |
+| `--render-scale` | `1.5` | Faster rasterization for Korean documents while maintaining high recognition quality (default `2.0`). |
+
+## Headless Notes
+
+- The CLI needs no window, prompt, or user interaction. It was verified from `nohup` detached shells (the job keeps running after the launching shell exits, and the output is byte-identical to a foreground run) and from the release package with a minimal `PATH` and no Xcode.
+- `VOCR.app` and its `VOCR_HEADLESS` environment variable are an internal GUI test seam that opens a window. AI agents should not use `VOCR.app` or `VOCR_HEADLESS`; agents should always invoke the `apple-vision-ocr` CLI directly.
 
 ## Project Boundary
 
@@ -18,6 +142,12 @@ enough. Do not commit `.build/`, `.workflow_build/`, `.omx/`, `.env*`, logs, or
 
 ## Requirements
 
+### Prebuilt Package
+- macOS 13 or later.
+- Apple Silicon (arm64) Mac.
+- Xcode is not needed for the prebuilt package.
+
+### Building From Source
 - macOS 13 or later.
 - Xcode command line tools or Xcode.
 - Swift 5.9 or later.
@@ -116,34 +246,6 @@ Clean up the smoke output before finishing:
 ```bash
 rm -rf .build/public-smoke
 ```
-
-## Real User Install
-
-The user-level installer builds the app and writes these default paths:
-
-```text
-~/Applications/VOCR.app
-~/.local/bin/apple-vision-ocr
-~/.local/bin/vocr-finder-action
-~/Library/Services/Apple Vision OCR.workflow
-```
-
-Run it only when installing for the current macOS user:
-
-```bash
-scripts/install-vocr-quick-action.sh
-```
-
-Custom app and binary locations:
-
-```bash
-VOCR_APP_INSTALL_DIR="$HOME/Applications" \
-VOCR_BIN_DIR="$HOME/.local/bin" \
-scripts/install-vocr-quick-action.sh
-```
-
-The Finder workflow is always installed under the current user's
-`~/Library/Services`.
 
 ## Isolated Installer Verification
 

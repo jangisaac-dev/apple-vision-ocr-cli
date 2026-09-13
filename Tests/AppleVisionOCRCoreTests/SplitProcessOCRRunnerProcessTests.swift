@@ -325,6 +325,57 @@ final class SplitProcessOCRRunnerProcessTests: XCTestCase {
         try assertRecordedProcessesExited(in: directory)
     }
 
+    func testCancelDuringSplitRunRemovesTemporaryDirectoryAndOutput() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let inputURL = directory.appendingPathComponent("input.pdf")
+        let outputURL = directory.appendingPathComponent("output.txt")
+        try makePDF(at: inputURL, pageCount: 1)
+        let workerURL = try makeWorker(in: directory, body: """
+        sleep 30 &
+        sleeper=$!
+        trap 'kill "$sleeper" 2>/dev/null || true; exit 0' TERM INT
+        wait "$sleeper"
+        """)
+        let control = OCRJobControl()
+        let result = Locked<Result<Void, Error>?>(nil)
+        let finished = expectation(description: "canceled split run returns")
+        let splitDirectoriesBefore = splitTemporaryDirectories()
+
+        DispatchQueue.global().async {
+            do {
+                try SplitProcessOCRRunner(executableURL: workerURL).run(
+                    inputURL: inputURL,
+                    output: .text(outputURL),
+                    workerCount: 2,
+                    languages: ["en"],
+                    recognitionLevel: .fast,
+                    renderScale: .compact,
+                    control: control
+                )
+                result.withValue { $0 = .success(()) }
+            } catch {
+                result.withValue { $0 = .failure(error) }
+            }
+            finished.fulfill()
+        }
+
+        XCTAssertTrue(
+            waitForFile(at: directory.appendingPathComponent("pids/1-1"), timeout: 1),
+            "worker PID was not recorded"
+        )
+        control.cancel()
+        wait(for: [finished], timeout: 4)
+
+        guard case .failure(let error) = result.value else {
+            return XCTFail("expected cancellation failure")
+        }
+        XCTAssertEqual(error as? AppleVisionOCRError, .pdfFailure("OCR job canceled"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outputURL.path))
+        XCTAssertEqual(splitTemporaryDirectories(), splitDirectoriesBefore)
+        try assertRecordedProcessesExited(in: directory)
+    }
+
     func testCancelWhilePausedReturnsPromptlyWithoutOutputOrSurvivingWorker() throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

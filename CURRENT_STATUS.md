@@ -37,6 +37,8 @@ The current goal is:
 - Installer (2026-09-13): `scripts/install-vocr-quick-action.sh` installs a prebuilt `VOCR.app` when one sits next to it (release package) and builds only from a checkout; it replaces the app via a staged copy, strips quarantine, installs the CLI from the app bundle, and bakes `VOCR_APP` into the Finder workflow so custom `VOCR_APP_INSTALL_DIR` installs launch the right app (previously the wrapper always opened `~/Applications/VOCR.app`).
 - Release packaging (2026-09-13): `scripts/make-release-package.sh` builds `.release/VOCR-<version>-macos-<arch>.zip` (app, installer, `Install.command`, `README.txt`, `LICENSE`) with a SHA-256 file. v1.1.0 ships arm64 only; the app is ad-hoc signed and not notarized.
 
+- Agent-facing CLI contract (2026-09-13): every run path (single-process, split TXT, split PDF, split PDF+TXT) prints `Progress: N/M pages` on stderr per completed page (split paths wire `SplitProcessOCRRunner` `onProgress`; before this, split runs printed no progress at all). `main.swift` routes SIGINT/SIGTERM through `OCRJobControl`, so cancel stops workers, removes `$TMPDIR/apple-vision-ocr-split-*` (previously leaked on SIGTERM), leaves no partial output, and exits 130/143. `--help` lists the output contract and exit codes. Verified with real OCR on a 40-page fixture: split text byte-identical to the pre-change output, SIGTERM/SIGINT leave no processes/temp dirs/outputs, and the detached job recipe in `docs/ai-install-and-setup.md` works as written. Known gap kept: the success-path `readerGroup.wait()` in `SplitProcessOCRRunner` is still unbounded.
+
 ## Fresh Verification
 
 - 2026-05-18: `env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift test` passed: 75 tests, 0 failures.
