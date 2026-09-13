@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-09-14
+
 ### Fixed
 
 - The Korean VOCR GUI no longer shows English for messages that were previously hard-coded or passed through from Core: the job-canceled message, the split-mode "OCR <file>" progress text, the eight Core pipeline progress messages (Starting OCR, Existing selectable text found; rasterizing affected pages, Writing output, Completed OCR, Rendering page N, Paused, OCR page N, Completed page N) which the GUI now maps to localized text when displaying them, the canceled-job error, and the "<file>: N page(s)" line in the existing-text alert. Core and CLI output stay English (the CLI stderr contract is unchanged). Other Core error descriptions (which contain file paths and technical detail) still appear in English.
@@ -73,7 +75,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `VOCR.app` Finder GUI with menu bar progress, and the `Apple Vision OCR` Finder Quick Action.
 - `--page-parallelism`, `--render-scale`, `--page-range`, and split-worker text OCR.
 
-[Unreleased]: https://github.com/jangisaac-dev/apple-vision-ocr-cli/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/jangisaac-dev/apple-vision-ocr-cli/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/jangisaac-dev/apple-vision-ocr-cli/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/jangisaac-dev/apple-vision-ocr-cli/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/jangisaac-dev/apple-vision-ocr-cli/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/jangisaac-dev/apple-vision-ocr-cli/compare/v1.0.0...v1.1.0
