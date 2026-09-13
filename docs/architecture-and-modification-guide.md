@@ -13,7 +13,7 @@ This guide is for developers and coding agents maintaining or modifying `apple-v
 ### Core Architectural Principles
 - **Dual Execution Model**:
   - **In-Process Pipeline (`SearchablePDFPipeline`)**: A single process renders pages and runs Vision recognition sequentially/concurrently via a bounded producer-consumer queue (`BoundedRenderedPageQueue`).
-  - **Multi-Process Split Pipeline (`SplitProcessOCRRunner`)**: When `--split-workers N` is passed (CLI) or the worker count is 2 or more (GUI), a parent process splits document page ranges across multiple independent child `apple-vision-ocr` processes, streaming progress lines from child `stderr`, and merging partial outputs using CoreGraphics (`CGContext.drawPDFPage`) for PDF or text concatenation for TXT.
+  - **Multi-Process Split Pipeline (`SplitProcessOCRRunner`)**: When `--split-workers N` is passed (CLI) or the worker count is 2 or more (GUI), a parent process splits document page ranges across multiple independent child `apple-vision-ocr` processes, streaming progress lines from child `stderr` (the CLI parent reports them as `Progress: N/M pages`), and merging partial outputs using CoreGraphics (`CGContext.drawPDFPage`) for PDF or text concatenation for TXT.
 - **Originals Are Never Modified**: Default outputs are `<name>_ocr.pdf` and `<name>.txt` next to the input. The CLI refuses to overwrite an existing output (`AppleVisionOCRError.outputAlreadyExists`); the GUI instead picks a numbered sibling name such as `<name>_ocr(1).pdf`.
 - **Accurate vs. Fast Recognition**: Apple Vision's `fast` recognition level does not support Korean (`ko-KR`). The codebase defaults to `accurate` and rejects `fast` when Korean is requested.
 - **Multi-Process Scaling**: In macOS, Apple Vision serializes recognition within a single process. Scaling OCR throughput across multiple CPU cores requires multi-process execution (`--split-workers`).
@@ -125,7 +125,7 @@ Log locations:
 | `AppleVisionOCRCLI` / `apple-vision-ocr` | Executable target | `AppleVisionOCRCore` | Terminal CLI tool |
 | `VOCR` / `VOCR` | Executable target | `AppleVisionOCRCore` | Menu bar GUI application |
 | `AppleVisionOCRCoreTests` | Test target | `AppleVisionOCRCore` | Unit and multi-process integration tests for Core |
-| `AppleVisionOCRCLITests` | Test target | `AppleVisionOCRCLI`, `AppleVisionOCRCore` | `--help` / `--version` output of `CommandRunner` |
+| `AppleVisionOCRCLITests` | Test target | `AppleVisionOCRCLI`, `AppleVisionOCRCore` | `--help` / `--version` output of `CommandRunner`, `Progress:` lines |
 | `VOCRTests` | Test target | `VOCR` | App lifecycle policy and option-window contents |
 
 ### Source Responsibilities
@@ -152,7 +152,7 @@ Log locations:
 - `VisionTextRecognizer.swift`: Executes Apple Vision text recognition requests on bitmap images.
 
 #### `Sources/AppleVisionOCRCLI/`
-- `main.swift`: Entry point for `apple-vision-ocr`; initializes parent-process watchdog monitoring and invokes `CommandRunner`.
+- `main.swift`: Entry point for `apple-vision-ocr`; initializes parent-process watchdog monitoring, routes SIGINT/SIGTERM to an `OCRJobControl` cancel (exit 130/143 after workers stop and temp files are removed), and invokes `CommandRunner.run(arguments:control:)`.
 - `CommandRunner.swift`: Top-level CLI command parser and dispatcher for help, version, dry-run, in-process, or split runners.
 - `ChunkedPDFOCRRunner.swift`: Adapter invoking `SplitProcessOCRRunner` specifically for searchable PDF output chunks.
 - `ChunkedTextOCRRunner.swift`: Adapter invoking `SplitProcessOCRRunner` specifically for text output chunks.
@@ -173,7 +173,7 @@ Log locations:
 ```mermaid
 flowchart TD
     subgraph CLI_Flow["CLI Runtime Flow (apple-vision-ocr)"]
-        CLI_Main["main.swift<br>(watchdog via APPLE_VISION_OCR_PARENT_PID)"] --> CommandRunner["CommandRunner.run()"]
+        CLI_Main["main.swift<br>(watchdog via APPLE_VISION_OCR_PARENT_PID,<br>SIGINT/SIGTERM → OCRJobControl.cancel)"] --> CommandRunner["CommandRunner.run()"]
         CommandRunner --> CLIParse{"CLICommand.parse()"}
         CLIParse -->|"--help / --version / --dry-run"| CLIQuickExit["Print and exit"]
         CLIParse -->|"--split-workers N"| SplitDecision{"Output mode"}
@@ -417,12 +417,12 @@ env SWIFTPM_HOME=.build/swiftpm-home \
 | `PDFTextOverlayWriterTests` | `PDFTextOverlayWriter.swift` | Media box preservation (incl. rotated pages), overlay width scaling, rasterized background removes source text |
 | `PDFTextPresenceDetectorTests` | `PDFTextPresenceDetector.swift` | Detects text pages, ignores image-only pages, inspects only selected pages |
 | `SearchablePDFPipelineParallelismTests` | `SearchablePDFPipeline.swift` | Concurrent pages within one PDF; render scale reaches the renderer |
-| `SplitProcessOCRRunnerProcessTests` | `SplitProcessOCRRunner.swift` | Fake child executable: exact TXT/PDF/combined child arguments, page breaks, child parallelism and environment, failure force-kills siblings and cleans up, cancel while paused |
+| `SplitProcessOCRRunnerProcessTests` | `SplitProcessOCRRunner.swift` | Fake child executable: exact TXT/PDF/combined child arguments, page breaks, child parallelism and environment, failure force-kills siblings and cleans up, cancel while paused, cancel mid-run removes the temp directory and output |
 | `SplitProcessOCRRunnerTests` | `SplitProcessOCRRunner.swift` | Chunk planning (incl. remainder), PDF merge, text join, refusing to replace existing outputs |
 | `TextOutputWriterTests` | `TextOutputWriter.swift` | Per-page text and `===== Page N =====` markers |
 | `UniqueOutputPathResolverTests` | `UniqueOutputPathResolver.swift` | Default name when free, `(1)` suffix for PDF and TXT when taken |
 | `VisionLanguageResolverTests` | `VisionLanguageResolver.swift` | Short aliases to Vision identifiers; fast mode rejects Korean and accepts English |
-| `CommandRunnerTests` | `CommandRunner.swift` | `--help` and `--version` exit codes and output |
+| `CommandRunnerTests` | `CommandRunner.swift` | `--help` (including the output contract and exit codes) and `--version`; one `Progress: N/M pages` line per completed page in a split run |
 | `VOCRAppLifecyclePolicyTests` | `VOCRAppLifecyclePolicy.swift`, `VOCRWindowController.swift` | Auto-quit after terminal states; option window contains the quit button, English-only speed warning, Korean speed preset, language-correction checkbox, worker-process label |
 
 #### Environment Seams

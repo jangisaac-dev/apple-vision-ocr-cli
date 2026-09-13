@@ -53,6 +53,12 @@ rm -rf "$HOME/Applications/VOCR.app" \
 
 ## CLI Contract
 
+> **Version note:** the `Progress:` lines and the SIGINT/SIGTERM cleanup below are
+> unreleased (see `CHANGELOG.md`, Unreleased). On v1.1.0 release binaries, single-process
+> runs print `Completed page N` without a total, `--split-workers` runs print no per-page
+> progress, and SIGTERM leaves an `apple-vision-ocr-split-*` directory in `$TMPDIR`.
+> Build from source (see Build And Test) to get this contract now.
+
 - **Input Rules**:
   - Exactly one input PDF per invocation. Passing a second input file is rejected with exit code `1`.
   - The original input PDF is never modified under any circumstances.
