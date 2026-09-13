@@ -36,7 +36,7 @@ final class SplitProcessOCRRunnerProcessTests: XCTestCase {
         page=${range%-*}
         end=${range#*-}
         while [ "$page" -le "$end" ]; do
-            printf 'Completed page %s\\n' "$page"
+            printf 'Completed page %s\\n' "$page" >&2
             page=$((page + 1))
         done
         """)
@@ -67,6 +67,104 @@ final class SplitProcessOCRRunnerProcessTests: XCTestCase {
             in: directory, inputURL: inputURL, range: "3-3", chunk: 1,
             usesLanguageCorrection: false, includesPageBreaks: false
         )
+        try assertRecordedProcessesExited(in: directory)
+    }
+
+    func testRunCountsOnlyRealStderrProgressMarkersAndCapsAtTotal() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let inputURL = directory.appendingPathComponent("input.pdf")
+        let outputURL = directory.appendingPathComponent("output.txt")
+        try makePDF(at: inputURL, pageCount: 3)
+        let workerURL = try makeWorker(in: directory, body: """
+        printf '%s\\n' "$support_dir/Completed page stdout-path"
+        printf 'stderr mentions Completed page in a path\\n' >&2
+        printf 'chunk-%s' "$range" > "$output"
+        page=${range%-*}
+        end=${range#*-}
+        while [ "$page" -le "$end" ]; do
+            printf 'Completed page %s\\n' "$page" >&2
+            page=$((page + 1))
+        done
+        """)
+        let progress = Locked<[SplitProcessOCRRunner.ProgressUpdate]>([])
+
+        try SplitProcessOCRRunner(executableURL: workerURL).run(
+            inputURL: inputURL,
+            output: .text(outputURL),
+            workerCount: 2,
+            languages: ["en"],
+            recognitionLevel: .fast,
+            renderScale: .compact
+        ) { update in
+            progress.withValue { $0.append(update) }
+        }
+
+        XCTAssertEqual(try String(contentsOf: outputURL), "chunk-1-2\nchunk-3-3")
+        XCTAssertEqual(progress.value.map(\.completedPages), [1, 2, 3])
+        XCTAssertTrue(progress.value.allSatisfy { $0.completedPages <= $0.totalPages })
+        XCTAssertEqual(Set(progress.value.map(\.totalPages)), [3])
+        try assertRecordedProcessesExited(in: directory)
+    }
+
+    func testRunMergesOutputBeforeDescendantClosesInheritedPipes() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let inputURL = directory.appendingPathComponent("input.pdf")
+        let outputURL = directory.appendingPathComponent("output.txt")
+        let descendantPIDURL = directory.appendingPathComponent("descendant.pid")
+        try makePDF(at: inputURL, pageCount: 1)
+        let workerURL = try makeWorker(in: directory, body: """
+        sleep 30 &
+        descendant=$!
+        printf '%s\\n' "$descendant" > "$support_dir/descendant.pid"
+        printf 'chunk-output' > "$output"
+        """)
+        let outcome = Locked<Result<Void, Error>?>(nil)
+        let runDuration = Locked<TimeInterval?>(nil)
+        let finished = expectation(description: "split run returns while descendant holds pipes")
+        let startedAt = Date()
+
+        DispatchQueue.global().async {
+            do {
+                try SplitProcessOCRRunner(executableURL: workerURL).run(
+                    inputURL: inputURL,
+                    output: .text(outputURL),
+                    workerCount: 2,
+                    languages: ["en"],
+                    recognitionLevel: .fast,
+                    renderScale: .compact
+                )
+                outcome.withValue { $0 = .success(()) }
+            } catch {
+                outcome.withValue { $0 = .failure(error) }
+            }
+            runDuration.withValue { $0 = Date().timeIntervalSince(startedAt) }
+            finished.fulfill()
+        }
+
+        XCTAssertTrue(waitForFile(at: descendantPIDURL, timeout: 1), "descendant PID was not recorded")
+        guard let descendantPID = try? Int32(
+            String(contentsOf: descendantPIDURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+        ) else {
+            return XCTFail("descendant PID was not readable")
+        }
+        defer { _ = kill(descendantPID, SIGKILL) }
+
+        wait(for: [finished], timeout: 10)
+        guard let duration = runDuration.value else {
+            _ = kill(descendantPID, SIGKILL)
+            let cleanupDeadline = Date().addingTimeInterval(2)
+            while runDuration.value == nil && Date() < cleanupDeadline {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+            return XCTFail("split run did not return within 10 seconds")
+        }
+        XCTAssertLessThan(duration, 10)
+        guard case .success = outcome.value else {
+            return XCTFail("expected split run to succeed")
+        }
+        XCTAssertEqual(try String(contentsOf: outputURL), "chunk-output")
         try assertRecordedProcessesExited(in: directory)
     }
 
@@ -110,7 +208,7 @@ final class SplitProcessOCRRunnerProcessTests: XCTestCase {
         page=${range%-*}
         end=${range#*-}
         while [ "$page" -le "$end" ]; do
-            printf 'Completed page %s\\n' "$page"
+            printf 'Completed page %s\\n' "$page" >&2
             page=$((page + 1))
         done
         """)

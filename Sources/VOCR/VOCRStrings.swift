@@ -47,6 +47,55 @@ enum VOCRStrings {
     static let statusCanceled = VOCRLocalizedString(english: "Canceled", korean: "취소됨")
     static let messageNoPDFSelected = VOCRLocalizedString(english: "No PDF selected.", korean: "선택된 PDF가 없습니다.")
     static let messageJobStarted = VOCRLocalizedString(english: "Starting OCR job", korean: "OCR 작업 시작")
+    static let messageOCRJobCanceled = VOCRLocalizedString(english: "OCR job canceled", korean: "OCR 작업 취소됨")
+    static func messageOCRFile(_ fileName: String) -> String {
+        language == .english ? "OCR \(fileName)" : "\(fileName) OCR"
+    }
+    static let pipelineStarting = VOCRLocalizedString(english: "Starting OCR", korean: "OCR 시작")
+    static let pipelineRasterizingExistingText = VOCRLocalizedString(
+        english: "Existing selectable text found; rasterizing affected pages",
+        korean: "기존 선택 가능한 텍스트 발견; 해당 페이지 래스터화"
+    )
+    static let pipelineWritingOutput = VOCRLocalizedString(english: "Writing output", korean: "출력 저장")
+    static let pipelineCompleted = VOCRLocalizedString(english: "Completed OCR", korean: "OCR 완료")
+    static func pipelineRenderingPage(_ pageNumber: Int) -> String {
+        language == .english ? "Rendering page \(pageNumber)" : "페이지 \(pageNumber) 렌더링"
+    }
+    static let pipelinePaused = VOCRLocalizedString(english: "Paused", korean: "일시정지")
+    static func pipelineRecognizingPage(_ pageNumber: Int) -> String {
+        language == .english ? "OCR page \(pageNumber)" : "페이지 \(pageNumber) OCR"
+    }
+    static func pipelineCompletedPage(_ pageNumber: Int) -> String {
+        language == .english ? "Completed page \(pageNumber)" : "페이지 \(pageNumber) 완료"
+    }
+    static func pipelineMessage(_ coreMessage: String) -> String {
+        switch coreMessage {
+        case pipelineStarting.english:
+            return pipelineStarting.text
+        case pipelineRasterizingExistingText.english:
+            return pipelineRasterizingExistingText.text
+        case pipelineWritingOutput.english:
+            return pipelineWritingOutput.text
+        case pipelineCompleted.english:
+            return pipelineCompleted.text
+        case pipelinePaused.english:
+            return pipelinePaused.text
+        default:
+            if coreMessage.hasPrefix("Rendering page "),
+               let pageNumber = Int(coreMessage.dropFirst("Rendering page ".count)) {
+                return pipelineRenderingPage(pageNumber)
+            }
+            if coreMessage.hasPrefix("OCR page "),
+               let pageNumber = Int(coreMessage.dropFirst("OCR page ".count)) {
+                return pipelineRecognizingPage(pageNumber)
+            }
+            if coreMessage.hasPrefix("Completed page "),
+               let pageNumber = Int(coreMessage.dropFirst("Completed page ".count)) {
+                return pipelineCompletedPage(pageNumber)
+            }
+            return coreMessage
+        }
+    }
     static func logWorkerCountChanged(_ count: Int) -> String {
         language == .english
             ? "Worker process count changed: \(count)"
@@ -142,6 +191,9 @@ enum VOCRStrings {
         english: "Some PDFs already contain selectable text.",
         korean: "이미 선택 가능한 텍스트가 있는 PDF가 있습니다."
     )
+    static func alertExistingTextFileDetail(fileName: String, pageCount: Int) -> String {
+        language == .english ? "\(fileName): \(pageCount) page(s)" : "\(fileName): \(pageCount)페이지"
+    }
     static func alertExistingTextBody(detail: String, omittedCount: Int) -> String {
         let omittedFiles = omittedCount > 0 ? alertMoreFiles(omittedCount) : ""
         return language == .english ? """
@@ -182,6 +234,12 @@ This avoids duplicate selection of existing searchable text. The original PDF is
         "statusCanceled": statusCanceled,
         "messageNoPDFSelected": messageNoPDFSelected,
         "messageJobStarted": messageJobStarted,
+        "messageOCRJobCanceled": messageOCRJobCanceled,
+        "pipelineStarting": pipelineStarting,
+        "pipelineRasterizingExistingText": pipelineRasterizingExistingText,
+        "pipelineWritingOutput": pipelineWritingOutput,
+        "pipelineCompleted": pipelineCompleted,
+        "pipelinePaused": pipelinePaused,
         "messagePauseRequested": messagePauseRequested,
         "messageCancelRequested": messageCancelRequested,
         "logCLINotFoundSingleProcess": logCLINotFoundSingleProcess,

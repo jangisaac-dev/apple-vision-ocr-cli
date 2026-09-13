@@ -69,6 +69,7 @@ CLI: ~/.local/bin/apple-vision-ocr input.pdf --help
 앱은 ad-hoc 서명이며 Apple 공증(notarization)을 받지 않았습니다. 설치 스크립트가 설치된 복사본의
 격리(quarantine) 속성을 제거합니다. / The app is ad-hoc signed and not notarized; the installer
 removes the quarantine attribute from the installed copy.
+AI 에이전트 설치 및 사용 가이드 / AI agent install and usage guide: https://github.com/jangisaac-dev/apple-vision-ocr-cli/blob/master/docs/ai-install-and-setup.md
 Source: https://github.com/jangisaac-dev/apple-vision-ocr-cli
 EOF
 

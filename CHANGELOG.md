@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- The Korean VOCR GUI no longer shows English for messages that were previously hard-coded or passed through from Core: the job-canceled message, the split-mode "OCR <file>" progress text, the eight Core pipeline progress messages (Starting OCR, Existing selectable text found; rasterizing affected pages, Writing output, Completed OCR, Rendering page N, Paused, OCR page N, Completed page N) which the GUI now maps to localized text when displaying them, the canceled-job error, and the "<file>: N page(s)" line in the existing-text alert. Core and CLI output stay English (the CLI stderr contract is unchanged). Other Core error descriptions (which contain file paths and technical detail) still appear in English.
+- The split runner now counts progress only from child stderr lines that start with "Completed page " and never above the total page count. Before, any child stdout or stderr line containing that phrase was counted, so a path containing it could over-count.
+- After all split workers exit successfully, the runner waits at most 5 seconds for their output pipes to close instead of waiting forever; previously a worker descendant holding the pipe open could hang the job after every chunk was written.
+
+### Changed
+
+- The release package README.txt now links to the AI agent install and usage guide (docs/ai-install-and-setup.md).
+
 ## [1.3.0] - 2026-09-13
 
 ### Changed

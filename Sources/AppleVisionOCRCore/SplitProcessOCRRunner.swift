@@ -227,7 +227,7 @@ public final class SplitProcessOCRRunner {
                 }
                 stderrTails[workerIndex] = tail
             }
-            if line.contains("Completed page") {
+            if isStderr, line.hasPrefix("Completed page "), completedPages < totalPages {
                 completedPages += 1
                 update = ProgressUpdate(completedPages: completedPages, totalPages: totalPages)
             }
@@ -324,7 +324,7 @@ public final class SplitProcessOCRRunner {
                     "split worker \(failedWorker.chunk.index) failed: \(progressState.stderrTail(for: failedWorker.chunk.index))"
                 )
             }
-            readerGroup.wait()
+            _ = readerGroup.wait(timeout: .now() + .seconds(5))
         } catch {
             terminateAndWait(for: workers)
             _ = readerGroup.wait(timeout: .now() + .seconds(2))

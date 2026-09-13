@@ -1,5 +1,6 @@
 import XCTest
 import AppKit
+import AppleVisionOCRCore
 @testable import VOCR
 
 final class VOCRAppLifecyclePolicyTests: XCTestCase {
@@ -114,15 +115,20 @@ final class VOCRAppLifecyclePolicyTests: XCTestCase {
         let errorDescription = "sample inspection failure"
         let detail = "sample-input.pdf already contains text"
         let omittedCount = 3
+        let pageNumber = 12
 
         for language in [VOCRLanguage.english, .korean] {
             Self.withLanguage(language) {
                 let entries: [(String, String, [String])] = [
                     ("logWorkerCountChanged", VOCRStrings.logWorkerCountChanged(workerCount), [String(workerCount)]),
                     ("messageWorkerCount", VOCRStrings.messageWorkerCount(workerCount), [String(workerCount)]),
+                    ("messageOCRFile", VOCRStrings.messageOCRFile(fileName), [fileName]),
                     ("logFileStarted", VOCRStrings.logFileStarted(fileName), [fileName]),
                     ("messageFileCompleted", VOCRStrings.messageFileCompleted(fileName), [fileName]),
                     ("logPlannedOutput", VOCRStrings.logPlannedOutput(fileName), [fileName]),
+                    ("pipelineRenderingPage", VOCRStrings.pipelineRenderingPage(pageNumber), [String(pageNumber)]),
+                    ("pipelineRecognizingPage", VOCRStrings.pipelineRecognizingPage(pageNumber), [String(pageNumber)]),
+                    ("pipelineCompletedPage", VOCRStrings.pipelineCompletedPage(pageNumber), [String(pageNumber)]),
                     ("previewGeneratedFiles", VOCRStrings.previewGeneratedFiles(generatedFiles), [generatedFiles]),
                     (
                         "logJobStartedWithOptions",
@@ -154,6 +160,11 @@ final class VOCRAppLifecyclePolicyTests: XCTestCase {
                         VOCRStrings.alertExistingTextBody(detail: detail, omittedCount: omittedCount),
                         [detail, String(omittedCount)]
                     ),
+                    (
+                        "alertExistingTextFileDetail",
+                        VOCRStrings.alertExistingTextFileDetail(fileName: fileName, pageCount: pageNumber),
+                        [fileName, String(pageNumber)]
+                    ),
                     ("alertMoreFiles", VOCRStrings.alertMoreFiles(omittedCount), [String(omittedCount)])
                 ]
 
@@ -169,6 +180,47 @@ final class VOCRAppLifecyclePolicyTests: XCTestCase {
                         )
                     }
                 }
+            }
+        }
+    }
+
+    @MainActor
+    func testPipelineMessagesLocalizeEveryCoreMessageAndPreserveUnknownText() {
+        let pageNumber = 12
+        let messages: [(String, () -> String)] = [
+            ("Starting OCR", { VOCRStrings.pipelineStarting.text }),
+            (
+                "Existing selectable text found; rasterizing affected pages",
+                { VOCRStrings.pipelineRasterizingExistingText.text }
+            ),
+            ("Writing output", { VOCRStrings.pipelineWritingOutput.text }),
+            ("Completed OCR", { VOCRStrings.pipelineCompleted.text }),
+            ("Rendering page \(pageNumber)", { VOCRStrings.pipelineRenderingPage(pageNumber) }),
+            ("Paused", { VOCRStrings.pipelinePaused.text }),
+            ("OCR page \(pageNumber)", { VOCRStrings.pipelineRecognizingPage(pageNumber) }),
+            ("Completed page \(pageNumber)", { VOCRStrings.pipelineCompletedPage(pageNumber) })
+        ]
+
+        for language in [VOCRLanguage.english, .korean] {
+            Self.withLanguage(language) {
+                for (coreMessage, expected) in messages {
+                    XCTAssertEqual(VOCRStrings.pipelineMessage(coreMessage), expected())
+                }
+
+                let unknownMessage = "Unknown pipeline message"
+                XCTAssertEqual(VOCRStrings.pipelineMessage(unknownMessage), unknownMessage)
+            }
+        }
+    }
+
+    @MainActor
+    func testCanceledErrorMessageIsLocalized() {
+        let controller = OCRJobController(files: [])
+        let error = AppleVisionOCRError.pdfFailure("OCR job canceled")
+
+        for language in [VOCRLanguage.english, .korean] {
+            Self.withLanguage(language) {
+                XCTAssertEqual(controller.errorMessage(error), VOCRStrings.messageOCRJobCanceled.text)
             }
         }
     }

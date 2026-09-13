@@ -230,7 +230,7 @@ final class OCRJobController {
                                     currentFile: job.inputURL.lastPathComponent,
                                     aggregate: aggregate,
                                     event: nil,
-                                    message: "OCR \(job.inputURL.lastPathComponent)"
+                                    message: VOCRStrings.messageOCRFile(job.inputURL.lastPathComponent)
                                 )
                             }
                             self.emit(snapshot: snapshot)
@@ -247,7 +247,7 @@ final class OCRJobController {
                                     currentFile: job.inputURL.lastPathComponent,
                                     aggregate: aggregate,
                                     event: event,
-                                    message: event.message
+                                    message: VOCRStrings.pipelineMessage(event.message)
                                 )
                             }
                             self.emit(snapshot: snapshot)
@@ -279,7 +279,7 @@ final class OCRJobController {
                 let finalState: VOCRRunState = state == .canceled ? .canceled : .failed
                 finish(state: finalState, message: errorMessage(firstError))
             } else if control.isCanceled || state == .canceled {
-                finish(state: .canceled, message: "OCR job canceled")
+                finish(state: .canceled, message: VOCRStrings.messageOCRJobCanceled.text)
             } else {
                 finish(state: .completed, message: VOCRStrings.messageOCRJobCompleted.text)
             }
@@ -549,8 +549,11 @@ final class OCRJobController {
         )
     }
 
-    private func errorMessage(_ error: Error) -> String {
+    func errorMessage(_ error: Error) -> String {
         if let ocrError = error as? AppleVisionOCRError {
+            if ocrError == .pdfFailure(VOCRStrings.messageOCRJobCanceled.english) {
+                return VOCRStrings.messageOCRJobCanceled.text
+            }
             return ocrError.description
         }
         return error.localizedDescription

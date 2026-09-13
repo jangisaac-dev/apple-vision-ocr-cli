@@ -442,7 +442,10 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
         }
 
         let detail = reports.prefix(6).map { file, report in
-            "\(file.lastPathComponent): \(report.textPageNumbers.count) page(s)"
+            VOCRStrings.alertExistingTextFileDetail(
+                fileName: file.lastPathComponent,
+                pageCount: report.textPageNumbers.count
+            )
         }.joined(separator: "\n")
         let omittedCount = reports.count - min(reports.count, 6)
 
