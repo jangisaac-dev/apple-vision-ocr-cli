@@ -45,9 +45,23 @@ public final class CommandRunner {
                     return .success
                 }
 
+                // Pages finish on several threads, so updates can arrive out of order. Print only
+                // increasing counts; the final N/N line is always printed.
+                let progressLock = NSLock()
+                var lastReportedPages = 0
+                let reportPages: (Int, Int) -> Void = { [stderr] completedPages, totalPages in
+                    progressLock.lock()
+                    defer { progressLock.unlock() }
+                    guard completedPages > lastReportedPages else {
+                        return
+                    }
+                    lastReportedPages = completedPages
+                    stderr("Progress: \(completedPages)/\(totalPages) pages")
+                }
+
                 if options.splitWorkers != nil {
-                    let reportProgress: (SplitProcessOCRRunner.ProgressUpdate) -> Void = { [stderr] update in
-                        stderr("Progress: \(update.completedPages)/\(update.totalPages) pages")
+                    let reportProgress: (SplitProcessOCRRunner.ProgressUpdate) -> Void = { update in
+                        reportPages(update.completedPages, update.totalPages)
                     }
                     if let outputURL = options.outputURL,
                        let textOutputURL = options.txtOutputURL,
@@ -84,7 +98,7 @@ public final class CommandRunner {
                         stderr(event.message)
                         if event.stage == .recognizingText,
                            event.message.hasPrefix("Completed page ") {
-                            stderr("Progress: \(event.completedPages)/\(event.totalPages) pages")
+                            reportPages(event.completedPages, event.totalPages)
                         }
                     }
                 }

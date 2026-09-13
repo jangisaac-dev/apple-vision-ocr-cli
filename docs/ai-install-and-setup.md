@@ -71,7 +71,7 @@ rm -rf "$HOME/Applications/VOCR.app" \
   - Searchable PDF path is printed first, followed by the TXT path (if text output was requested).
 - **stderr**:
   - Human-readable status messages and logs.
-  - Machine-parseable progress updates after each completed page: `Progress: <completed>/<total> pages` (emitted across all execution modes, including `--split-workers`).
+  - Machine-parseable progress updates after each completed page: `Progress: <completed>/<total> pages` (emitted across all execution modes, including `--split-workers`). Counts only increase; when pages finish together a count can be skipped, but a successful run always ends with `Progress: <total>/<total> pages`.
   - Error messages prefixed with `error: <message>` upon failure.
 - **Exit Codes**:
   | Exit Code | Name | Description |
@@ -83,7 +83,7 @@ rm -rf "$HOME/Applications/VOCR.app" \
   | `4` | Vision failure | Apple Vision framework error during text recognition. |
   | `5` | Output already exists | Destination file already exists (overwrite refused). |
   | `130` | Canceled by SIGINT | Interrupted by SIGINT (Ctrl-C). |
-  | `143` | Canceled by SIGTERM | Terminated by `kill -TERM <pid>`. Temporary files cleaned up, no partial output left. |
+  | `143` | Canceled by SIGTERM | Terminated by `kill -TERM <pid>`. Temporary files cleaned up, no partial output left. Repeated signals are ignored while cleanup runs; `kill -KILL` forces an exit but skips cleanup. |
 - **`--dry-run` Limits**:
   - `--dry-run` validates arguments, checks input file existence, checks output path collisions, and prints planned output paths without running OCR.
   - It does not open or parse the PDF (a non-PDF file still passes with exit `0` and fails later with exit `3`), does not perform text recognition, and does not prove Apple Vision works in the current environment (e.g. inside sandboxes).

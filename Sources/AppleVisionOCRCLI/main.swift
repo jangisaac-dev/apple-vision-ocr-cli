@@ -17,20 +17,18 @@ final class SignalCancellation {
         return signalExitCode
     }
 
-    func handle(signal: Int32, occurrences: UInt = 1) {
-        for _ in 0..<max(1, occurrences) {
-            lock.lock()
-            let isFirstSignal = signalExitCode == nil
-            if isFirstSignal {
-                signalExitCode = 128 + signal
-            }
-            lock.unlock()
+    // Later signals are ignored: exiting here would skip the runner's cleanup (temp dir, workers).
+    // SIGKILL remains the way to force an exit.
+    func handle(signal: Int32) {
+        lock.lock()
+        let isFirstSignal = signalExitCode == nil
+        if isFirstSignal {
+            signalExitCode = 128 + signal
+        }
+        lock.unlock()
 
-            if isFirstSignal {
-                control.cancel()
-            } else {
-                exit(128 + signal)
-            }
+        if isFirstSignal {
+            control.cancel()
         }
     }
 }
@@ -53,25 +51,26 @@ if let rawParentProcessID = ProcessInfo.processInfo.environment["APPLE_VISION_OC
 
 let control = OCRJobControl()
 let signalCancellation = SignalCancellation(control: control)
-signal(SIGINT, SIG_IGN)
-signal(SIGTERM, SIG_IGN)
+var signalSources: [DispatchSourceSignal] = []
 
-let signalQueue = DispatchQueue(label: "apple-vision-ocr.signal", qos: .utility)
-let sigintSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: signalQueue)
-let sigtermSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: signalQueue)
-sigintSource.setEventHandler {
-    signalCancellation.handle(signal: SIGINT, occurrences: sigintSource.data)
+// Split children keep the default SIGTERM/SIGINT action: the parent owns cleanup and escalates
+// to SIGKILL after 2 s, so a graceful child cancel would only add delay.
+if ProcessInfo.processInfo.environment["APPLE_VISION_OCR_PARENT_PID"] == nil {
+    let signalQueue = DispatchQueue(label: "apple-vision-ocr.signal", qos: .utility)
+    for signalNumber in [SIGINT, SIGTERM] {
+        signal(signalNumber, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: signalQueue)
+        source.setEventHandler {
+            signalCancellation.handle(signal: signalNumber)
+        }
+        source.resume()
+        signalSources.append(source)
+    }
 }
-sigtermSource.setEventHandler {
-    signalCancellation.handle(signal: SIGTERM, occurrences: sigtermSource.data)
-}
-sigintSource.resume()
-sigtermSource.resume()
 
 let runner = CommandRunner()
 let exitCode = runner.run(arguments: Array(CommandLine.arguments.dropFirst()), control: control)
-sigintSource.cancel()
-sigtermSource.cancel()
+signalSources.forEach { $0.cancel() }
 if let signalExitCode = signalCancellation.exitCode {
     exit(signalExitCode)
 }
