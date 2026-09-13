@@ -1,6 +1,6 @@
 # Current Status
 
-Updated: 2026-09-09
+Updated: 2026-09-13
 
 ## Current Objective
 
@@ -32,6 +32,7 @@ The current goal is:
 - `--split-workers` upper bound raised from 8 to 16 (2026-06-12). On an 18-core machine the practical sweet spot is ~12 workers; in-process `--page-parallelism` gives no speedup because Apple Vision serializes recognition per process (measured: dense 24-page PDF stays ~45s for pp1/pp8/pp16, peak CPU ~199% = 2 cores; `--split-workers 12` reaches ~17 cores).
 - VOCR GUI (the Finder right-click path) now uses multi-process parallelism (2026-06-13). The split/merge logic was extracted into shared `Sources/AppleVisionOCRCore/SplitProcessOCRRunner.swift` (spawns `apple-vision-ocr` page-range children, parses their "Completed page" stderr lines for live progress, merges PDFs / concatenates text, supports cancel via `OCRJobControl` and pause via SIGSTOP/SIGCONT). Both CLI runners are now thin wrappers over it. `OCRJobController` uses the shared runner when a single output mode (TXT-only XOR PDF-only) is selected and the worker count is >= 2, and falls back to the in-process pipeline for combined TXT+PDF, worker count 1, or when the CLI binary cannot be located. The GUI "동시 OCR 페이지 수" stepper became "동시 워커 프로세스 수" (auto-default ~= activeProcessorCount*2/3, capped 16). `apple-vision-ocr` is now bundled inside `VOCR.app/Contents/MacOS/` (package-vocr-app.sh); the GUI locates it via `VOCR_CLI_PATH` > bundle sibling > `~/.local/bin` > PATH. A `VOCR_HEADLESS=1` env seam auto-runs a default searchable-PDF job for end-to-end testing.
 - Searchable PDF split-worker support is now IMPLEMENTED (2026-06-12), following the previously-deferred safe design. New `Sources/AppleVisionOCRCLI/ChunkedPDFOCRRunner.swift` runs child processes over non-overlapping page ranges (`--output chunk.pdf --page-range A-B`), each producing a per-range searchable PDF via the proven single-process pipeline, then the parent merges them in page order. The merge uses CoreGraphics `CGContext.drawPDFPage` (the same mechanism `PDFTextOverlayWriter` already uses to copy original pages), NOT the rejected PDFKit chunk-rewrite approach, so the invisible OCR text layer is preserved unchanged. The `--split-workers` / `--page-range` validation was relaxed from "text-only" to "single output mode" (text-only XOR PDF-only); simultaneous text+PDF (`--txt`) and `--page-breaks` remain rejected. Routing: `CommandRunner` sends `splitWorkers` + a PDF output URL to `ChunkedPDFOCRRunner`, otherwise to `ChunkedTextOCRRunner`.
+- VOCR selected-file list is a fixed-height (80 pt), non-wrapping `NSTextView.scrollableTextView()` that scrolls vertically and horizontally (2026-09-13). The old wrapping label grew with the file count and pushed the progress, log, and buttons out of the fixed 580 pt window. Verified by installing with `scripts/install-vocr-quick-action.sh` and opening `~/Applications/VOCR.app` with 30 long-path PDFs. Modification guide: `docs/architecture-and-modification-guide.md`.
 
 ## Fresh Verification
 

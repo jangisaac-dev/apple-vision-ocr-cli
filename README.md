@@ -25,6 +25,7 @@ Current release: `v1.0.0`.
 
 - Human guide: `docs/user-guide.md`
 - AI/automation install and setup guide: `docs/ai-install-and-setup.md`
+- Architecture and modification guide: `docs/architecture-and-modification-guide.md`
 - Implementation status: `CURRENT_STATUS.md`
 
 ## Install
