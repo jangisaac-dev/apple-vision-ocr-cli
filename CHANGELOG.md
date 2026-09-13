@@ -5,15 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-13
+
 ### Added
 
-- CLI prints `Progress: <completed>/<total> pages` on stderr after each page in every mode, including `--split-workers`.
-- CLI handles SIGINT/SIGTERM: stops worker processes, removes temporary split files, leaves no partial output, and exits 130/143.
+- CLI prints `Progress: <completed>/<total> pages` on stderr after each page in every mode, including `--split-workers`. Counts only increase and a successful run ends with `<total>/<total>`.
+- CLI handles SIGINT/SIGTERM: stops worker processes, removes temporary split files, leaves no partial output, and exits 130/143. Repeated signals are ignored while cleanup runs.
 - `--help` documents the stdout/stderr contract and exit codes.
 - AI agent install and usage guide (`docs/ai-install-and-setup.md`: install without Xcode, portable use, CLI contract, background jobs) and `AGENTS.md`.
 - App icon for `VOCR.app`.
 - Korean translations: `README.ko.md`, `docs/user-guide.ko.md`.
-- Contributing guide, code of conduct, security policy, changelog, and issue/PR templates.
+- Contributing guide, code of conduct, security policy, and issue/PR templates.
+
+### Fixed
+
+- `--split-workers` runs printed no per-page progress.
+- SIGTERM during a `--split-workers` run left an `apple-vision-ocr-split-*` directory in `$TMPDIR`.
 
 ## [1.1.0] - 2026-09-13
 
@@ -49,6 +56,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `VOCR.app` Finder GUI with menu bar progress, and the `Apple Vision OCR` Finder Quick Action.
 - `--page-parallelism`, `--render-scale`, `--page-range`, and split-worker text OCR.
 
-[Unreleased]: https://github.com/jangisaac-dev/apple-vision-ocr-cli/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/jangisaac-dev/apple-vision-ocr-cli/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/jangisaac-dev/apple-vision-ocr-cli/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/jangisaac-dev/apple-vision-ocr-cli/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/tag/v1.0.0

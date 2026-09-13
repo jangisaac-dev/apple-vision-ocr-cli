@@ -6,17 +6,17 @@ that need to install, run, verify, or package Apple Vision OCR without guessing.
 ## Quick Start For Agents
 
 Download the prebuilt release, verify the checksum, remove quarantine, install, and run OCR.
-The commands pin `v1.1.0`; check the latest tag first with
+The commands pin `v1.2.0`; check the latest tag first with
 `gh release view --repo jangisaac-dev/apple-vision-ocr-cli --json tagName --jq .tagName`.
 
 ```bash
-# Download prebuilt arm64 release and checksum (or: gh release download v1.1.0 --repo jangisaac-dev/apple-vision-ocr-cli)
-curl -LO https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/download/v1.1.0/VOCR-1.1.0-macos-arm64.zip
-curl -LO https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/download/v1.1.0/VOCR-1.1.0-macos-arm64.zip.sha256
-shasum -a 256 -c VOCR-1.1.0-macos-arm64.zip.sha256
-unzip -q VOCR-1.1.0-macos-arm64.zip
-xattr -dr com.apple.quarantine VOCR-1.1.0-macos-arm64
-VOCR-1.1.0-macos-arm64/install-vocr-quick-action.sh
+# Download prebuilt arm64 release and checksum (or: gh release download v1.2.0 --repo jangisaac-dev/apple-vision-ocr-cli)
+curl -LO https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/download/v1.2.0/VOCR-1.2.0-macos-arm64.zip
+curl -LO https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/download/v1.2.0/VOCR-1.2.0-macos-arm64.zip.sha256
+shasum -a 256 -c VOCR-1.2.0-macos-arm64.zip.sha256
+unzip -q VOCR-1.2.0-macos-arm64.zip
+xattr -dr com.apple.quarantine VOCR-1.2.0-macos-arm64
+VOCR-1.2.0-macos-arm64/install-vocr-quick-action.sh
 "$HOME/.local/bin/apple-vision-ocr" --version
 "$HOME/.local/bin/apple-vision-ocr" input.pdf --txt-only
 ```
@@ -24,7 +24,7 @@ VOCR-1.1.0-macos-arm64/install-vocr-quick-action.sh
 > **Note:** Agents must run `install-vocr-quick-action.sh` directly (non-interactive, needs no Xcode when `VOCR.app` sits next to it). Do NOT run `Install.command`: it waits for an interactive key press.
 
 Portable use without installing (writes nothing to `~/Library` or `~/.local/bin`):
-Run `VOCR-1.1.0-macos-arm64/VOCR.app/Contents/MacOS/apple-vision-ocr` by absolute path.
+Run `VOCR-1.2.0-macos-arm64/VOCR.app/Contents/MacOS/apple-vision-ocr` by absolute path.
 `--split-workers` and all other options work directly from there.
 
 ## Choose An Install Path
@@ -36,7 +36,7 @@ Run `VOCR-1.1.0-macos-arm64/VOCR.app/Contents/MacOS/apple-vision-ocr` by absolut
 | **From Source** | macOS 13+, Xcode CLI tools / Xcode, Swift 5.9+ | `.build/` (and optionally user install paths if installer is run) | Modifying CLI/app code, custom local builds, or contributing. |
 
 > **Note:** Installer destination paths can be customized via environment variables:
-> `VOCR_APP_INSTALL_DIR="$HOME/Applications" VOCR_BIN_DIR="$HOME/.local/bin" VOCR-1.1.0-macos-arm64/install-vocr-quick-action.sh`
+> `VOCR_APP_INSTALL_DIR="$HOME/Applications" VOCR_BIN_DIR="$HOME/.local/bin" VOCR-1.2.0-macos-arm64/install-vocr-quick-action.sh`
 > Because `~/.local/bin` may not be in default `PATH`, invoke the CLI using its absolute path `"$HOME/.local/bin/apple-vision-ocr"`.
 
 ## Uninstall
@@ -53,11 +53,10 @@ rm -rf "$HOME/Applications/VOCR.app" \
 
 ## CLI Contract
 
-> **Version note:** the `Progress:` lines and the SIGINT/SIGTERM cleanup below are
-> unreleased (see `CHANGELOG.md`, Unreleased). On v1.1.0 release binaries, single-process
-> runs print `Completed page N` without a total, `--split-workers` runs print no per-page
-> progress, and SIGTERM leaves an `apple-vision-ocr-split-*` directory in `$TMPDIR`.
-> Build from source (see Build And Test) to get this contract now.
+> **Version note:** the `Progress:` lines and the SIGINT/SIGTERM cleanup below require
+> v1.2.0 or later. On v1.1.0, single-process runs print `Completed page N` without a total,
+> `--split-workers` runs print no per-page progress, and SIGTERM leaves an
+> `apple-vision-ocr-split-*` directory in `$TMPDIR`.
 
 - **Input Rules**:
   - Exactly one input PDF per invocation. Passing a second input file is rejected with exit code `1`.

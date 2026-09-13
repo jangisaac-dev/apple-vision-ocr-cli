@@ -1,6 +1,6 @@
 # Current Status
 
-Updated: 2026-09-13 (v1.1.0)
+Updated: 2026-09-13 (v1.2.0)
 
 ## Current Objective
 
@@ -97,6 +97,7 @@ The current goal is:
   line. NOT applied — single machine, single document.
   Correction to an earlier note: `--page-parallelism` is NOT a no-op under split — child
   `pp=1` at 12 workers is 10% slower (54.42s) while saving 9% RSS (3853 MB).
+- 2026-09-13 (v1.2.0): `swift test` passed: 108 tests, 0 failures. `scripts/make-release-package.sh` produced `VOCR-1.2.0-macos-arm64.zip` (SHA-256 verified, no AppleDouble entries, no personal paths in either binary, `VOCR.icns` bundled, plist 1.2.0 / build 3, `codesign --verify --deep --strict` OK). Installed from the unzipped, quarantine-marked package with `env -i` and a PATH without Swift into a fake `HOME` with app dir `My Apps & Tools` and bin dir `bin dir`: no build ran, quarantine removed, installed codesign OK, app and CLI report 1.2.0, workflow plists lint OK, and the workflow bakes the shell-quoted, XML-escaped custom app path. Installed CLI: sample smoke text matches; 12-page fixture with `--split-workers 4` PDF+TXT exits 0 with 12 `Progress:` lines ending `12/12`. Packaged portable CLI: SIGTERM 3 s into a split run exits 143 with no workers, temp dirs, or partial output. Not verified: macOS 13, Intel, the Gatekeeper dialog for a downloaded `Install.command`, and the GUI on this build.
 - 2026-09-13 (v1.1.0): `swift test` passed: 105 tests, 0 failures. New
   `testFileListScrollsHorizontallyInsteadOfWrappingLongPaths` was mutation-checked (fails with
   `widthTracksTextView = true`). `scripts/make-release-package.sh` produced
