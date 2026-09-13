@@ -18,7 +18,8 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
     private var currentState: VOCRRunState = .idle
     private let textPresenceDetector = PDFTextPresenceDetector()
 
-    private let fileListField = NSTextField(wrappingLabelWithString: "")
+    private let fileListScroll = NSTextView.scrollableTextView()
+    private var fileListView: NSTextView { fileListScroll.documentView as! NSTextView }
     private let outputPreviewField = NSTextField(wrappingLabelWithString: "")
     private let progressIndicator = NSProgressIndicator()
     private let progressLabel = NSTextField(labelWithString: "준비됨")
@@ -102,7 +103,16 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
 
         let fileHeader = NSTextField(labelWithString: "선택 파일")
         fileHeader.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        fileListField.textColor = .secondaryLabelColor
+        fileListView.isEditable = false
+        fileListView.textColor = .secondaryLabelColor
+        // 긴 경로는 줄바꿈 대신 가로 스크롤
+        fileListView.isHorizontallyResizable = true
+        fileListView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        fileListView.textContainer?.widthTracksTextView = false
+        fileListView.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        fileListScroll.hasHorizontalScroller = true
+        fileListScroll.borderType = .bezelBorder
+        fileListScroll.heightAnchor.constraint(equalToConstant: 80).isActive = true
 
         let outputHeader = NSTextField(labelWithString: "출력 방식")
         outputHeader.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
@@ -192,7 +202,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
             subtitle,
             separator(),
             fileHeader,
-            fileListField,
+            fileListScroll,
             separator(),
             outputHeader,
             outputStack,
@@ -220,16 +230,18 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
             contentStack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 24),
             contentStack.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -24),
             progressIndicator.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
-            logScroll.widthAnchor.constraint(equalTo: contentStack.widthAnchor)
+            logScroll.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
+            fileListScroll.widthAnchor.constraint(equalTo: contentStack.widthAnchor)
         ])
     }
 
     private func updateFileList() {
         if files.isEmpty {
-            fileListField.stringValue = "PDF 파일이 전달되지 않았습니다."
+            fileListView.string = "PDF 파일이 전달되지 않았습니다."
         } else {
-            fileListField.stringValue = files.map(\.path).joined(separator: "\n")
+            fileListView.string = files.map(\.path).joined(separator: "\n")
         }
+        fileListView.scrollToBeginningOfDocument(nil)
     }
 
     private func updateControls(for state: VOCRRunState) {
