@@ -71,7 +71,8 @@ if ProcessInfo.processInfo.environment["APPLE_VISION_OCR_PARENT_PID"] == nil {
 let runner = CommandRunner()
 let exitCode = runner.run(arguments: Array(CommandLine.arguments.dropFirst()), control: control)
 signalSources.forEach { $0.cancel() }
-if let signalExitCode = signalCancellation.exitCode {
+// A signal that lands after the outputs were written does not undo a successful run.
+if exitCode != .success, let signalExitCode = signalCancellation.exitCode {
     exit(signalExitCode)
 }
 exit(exitCode.rawValue)

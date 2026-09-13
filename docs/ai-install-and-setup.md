@@ -10,14 +10,19 @@ The commands pin `v1.2.0`; check the latest tag first with
 `gh release view --repo jangisaac-dev/apple-vision-ocr-cli --json tagName --jq .tagName`.
 
 ```bash
-# Download prebuilt arm64 release and checksum (or: gh release download v1.2.0 --repo jangisaac-dev/apple-vision-ocr-cli)
-curl -LO https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/download/v1.2.0/VOCR-1.2.0-macos-arm64.zip
-curl -LO https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/download/v1.2.0/VOCR-1.2.0-macos-arm64.zip.sha256
-shasum -a 256 -c VOCR-1.2.0-macos-arm64.zip.sha256
-unzip -q VOCR-1.2.0-macos-arm64.zip
-xattr -dr com.apple.quarantine VOCR-1.2.0-macos-arm64
-VOCR-1.2.0-macos-arm64/install-vocr-quick-action.sh
-"$HOME/.local/bin/apple-vision-ocr" --version
+# Stops at the first failed step (download, checksum, install). The subshell keeps your shell open.
+(
+  set -euo pipefail
+  V=1.2.0
+  BASE="https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/download/v$V"
+  curl -fLO "$BASE/VOCR-$V-macos-arm64.zip"
+  curl -fLO "$BASE/VOCR-$V-macos-arm64.zip.sha256"
+  shasum -a 256 -c "VOCR-$V-macos-arm64.zip.sha256"
+  unzip -oq "VOCR-$V-macos-arm64.zip"
+  xattr -dr com.apple.quarantine "VOCR-$V-macos-arm64"
+  "VOCR-$V-macos-arm64/install-vocr-quick-action.sh"
+  "$HOME/.local/bin/apple-vision-ocr" --version
+)
 "$HOME/.local/bin/apple-vision-ocr" input.pdf --txt-only
 ```
 
@@ -82,39 +87,46 @@ rm -rf "$HOME/Applications/VOCR.app" \
   | `4` | Vision failure | Apple Vision framework error during text recognition. |
   | `5` | Output already exists | Destination file already exists (overwrite refused). |
   | `130` | Canceled by SIGINT | Interrupted by SIGINT (Ctrl-C). |
-  | `143` | Canceled by SIGTERM | Terminated by `kill -TERM <pid>`. Temporary files cleaned up, no partial output left. Repeated signals are ignored while cleanup runs; `kill -KILL` forces an exit but skips cleanup. |
+  | `143` | Canceled by SIGTERM | Terminated by `kill -TERM <pid>`. Temporary files cleaned up, no partial output left. Repeated signals are ignored while cleanup runs; `kill -KILL` forces an exit but skips cleanup. A signal that arrives after the outputs were written does not change the result: the run exits `0`. |
 - **`--dry-run` Limits**:
   - `--dry-run` validates arguments, checks input file existence, checks output path collisions, and prints planned output paths without running OCR.
   - It does not open or parse the PDF (a non-PDF file still passes with exit `0` and fails later with exit `3`), does not perform text recognition, and does not prove Apple Vision works in the current environment (e.g. inside sandboxes).
 
 ## Background And Long Jobs
 
-Run long jobs detached. The wrapper records the CLI's own PID (so you can signal it
-directly), its stdout/stderr, and its exit code:
+Run long jobs detached. Each job gets a fresh directory holding the CLI's own PID (so you can
+signal it directly), its stdout/stderr, and its exit code.
+
+Start a job:
 
 ```bash
 CLI="$HOME/.local/bin/apple-vision-ocr"
-export JOB="$PWD/ocr-job"; mkdir -p "$JOB"   # exported: the inner sh reads it
+export JOB="$(mktemp -d "${TMPDIR:-/tmp}/ocr-job.XXXXXX")"   # new directory per job; exported for the inner sh
+echo "$JOB"                                                  # keep this path to poll or cancel later
 
-# Start: arguments after the script are "$0" "$@" inside sh -c.
 nohup sh -c '"$0" "$@" >"$JOB/out" 2>"$JOB/err" & echo $! >"$JOB/pid"; wait $!; echo $? >"$JOB/exit"' \
   "$CLI" "$PWD/in.pdf" --txt-only --txt-output "$PWD/out.txt" --split-workers 8 \
   </dev/null >/dev/null 2>&1 &
+```
 
-# Poll progress (empty until the first page finishes).
-grep '^Progress:' "$JOB/err" | tail -n 1
+Poll it (set `JOB` to the printed path first if you are in a new shell):
 
-# Done when the exit file exists.
-[ -f "$JOB/exit" ] && { echo "exit=$(cat "$JOB/exit")"; cat "$JOB/out"; }
+```bash
+grep '^Progress:' "$JOB/err" | tail -n 1                                    # empty until the first page finishes
+[ -f "$JOB/exit" ] && { echo "exit=$(cat "$JOB/exit")"; cat "$JOB/out"; }   # finished when the exit file exists
+```
 
-# Cancel: signal the CLI PID. The job ends with exit 143, no workers or temp files left, no partial output.
-kill -TERM "$(cat "$JOB/pid")"
+Cancel it (only when you want to stop the job):
+
+```bash
+kill -TERM "$(cat "$JOB/pid")"   # exit 143; workers, temp files, and partial output are removed
 ```
 
 Notes:
 
 - Use absolute paths for the input and outputs; the wrapper does not change directory.
 - If `err` contains `error:`, read the exit code table above before retrying. Exit `5` means pick a new output path.
+- Remove the job directory when you no longer need it: `rm -rf "$JOB"`.
 
 ## Recommended Options
 
