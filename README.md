@@ -20,7 +20,7 @@ Swift-only macOS OCR tool using Apple Vision. It includes:
 - `VOCR.app`: Finder-launched GUI with detail window and menu bar progress.
 - `Apple Vision OCR`: one Finder Quick Action for selected PDF files.
 
-Current release: `v1.2.0`.
+Current release: `v1.3.0`.
 
 ## Scope
 
