@@ -1,0 +1,49 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The exact command or VOCR options you used.
+      placeholder: apple-vision-ocr input.pdf --txt-only --split-workers 4
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where
+      options:
+        - CLI (apple-vision-ocr)
+        - VOCR app / Finder Quick Action
+        - Installer / release package
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: VOCR version
+      description: Output of `apple-vision-ocr --version`
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version and Mac
+      placeholder: macOS 15.5, Apple M3
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: CLI stderr, or `~/Library/Logs/vocr-quick-action.log` for the Quick Action.
+      render: text

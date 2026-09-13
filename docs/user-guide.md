@@ -1,5 +1,7 @@
 # Apple Vision OCR User Guide
 
+English | [한국어](user-guide.ko.md)
+
 Apple Vision OCR turns image-only PDF pages into searchable PDFs, plain text
 files, or both. It uses Apple's built-in Vision framework, so it runs locally on
 macOS and does not upload your documents.

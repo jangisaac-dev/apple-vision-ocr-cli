@@ -1,4 +1,18 @@
-# Apple Vision OCR CLI / VOCR
+<p align="center">
+  <img src="assets/icon/VOCR-1024.png" alt="VOCR icon" width="128" height="128">
+</p>
+
+<h1 align="center">Apple Vision OCR CLI / VOCR</h1>
+
+<p align="center">
+  <a href="https://github.com/jangisaac-dev/apple-vision-ocr-cli/actions/workflows/ci.yml"><img src="https://github.com/jangisaac-dev/apple-vision-ocr-cli/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/latest"><img src="https://img.shields.io/github/v/release/jangisaac-dev/apple-vision-ocr-cli" alt="Release"></a>
+  <img src="https://img.shields.io/badge/macOS-13%2B-black?logo=apple" alt="macOS 13+">
+  <img src="https://img.shields.io/badge/Swift-5.9%2B-F05138?logo=swift&logoColor=white" alt="Swift 5.9+">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/jangisaac-dev/apple-vision-ocr-cli" alt="License: MIT"></a>
+</p>
+
+<p align="center">English | <a href="README.ko.md">한국어</a></p>
 
 Swift-only macOS OCR tool using Apple Vision. It includes:
 
@@ -10,7 +24,7 @@ Current release: `v1.1.0`.
 
 ## Scope
 
-- Input: one or more PDF files.
+- Input: PDF files. The CLI takes one PDF per run; VOCR and the Quick Action accept several selected PDFs.
 - Output: searchable PDF, TXT, or both.
 - OCR engine: Apple Vision text recognition.
 - Default languages: Korean and English, configurable with `--lang`.
@@ -25,9 +39,12 @@ Current release: `v1.1.0`.
 ## Documentation
 
 - Human guide: `docs/user-guide.md`
-- AI/automation install and setup guide: `docs/ai-install-and-setup.md`
+- AI agent install and usage guide (install without Xcode, CLI contract, exit codes, background jobs): `docs/ai-install-and-setup.md`, plus `AGENTS.md` for coding agents
 - Architecture and modification guide: `docs/architecture-and-modification-guide.md`
 - Implementation status: `CURRENT_STATUS.md`
+- Changelog: `CHANGELOG.md`
+- Contributing: `CONTRIBUTING.md`
+- Korean (한국어): `README.ko.md`, `docs/user-guide.ko.md`
 
 ## Install
 

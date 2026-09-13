@@ -23,6 +23,7 @@ cp "$ROOT/.build/release/VOCR" "$MACOS_DIR/VOCR"
 chmod 755 "$MACOS_DIR/VOCR"
 cp "$ROOT/.build/release/apple-vision-ocr" "$MACOS_DIR/apple-vision-ocr"
 chmod 755 "$MACOS_DIR/apple-vision-ocr"
+cp "$ROOT/assets/icon/VOCR.icns" "$RESOURCES_DIR/VOCR.icns"
 
 cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -41,6 +42,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <key>CFBundleName</key>
   <string>VOCR</string>
   <key>CFBundleDisplayName</key>
+  <string>VOCR</string>
+  <key>CFBundleIconFile</key>
   <string>VOCR</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
