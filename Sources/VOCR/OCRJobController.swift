@@ -79,7 +79,7 @@ final class OCRJobController {
             return
         }
         guard !files.isEmpty else {
-            finish(state: .failed, message: "선택된 PDF가 없습니다.")
+            finish(state: .failed, message: VOCRStrings.messageNoPDFSelected.text)
             return
         }
 
@@ -94,7 +94,7 @@ final class OCRJobController {
             completedPageBase: 0,
             totalPageCount: 0,
             event: nil,
-            message: "OCR 작업 시작"
+            message: VOCRStrings.messageJobStarted.text
         ))
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -110,10 +110,10 @@ final class OCRJobController {
     func updateParallelism(_ parallelism: OCRJobParallelism) {
         setActiveParallelism(parallelism)
         if isRunning {
-            log("동시 워커 프로세스 수 변경: \(parallelism.count)개")
+            log(VOCRStrings.logWorkerCountChanged(parallelism.count))
             emit(snapshot: snapshotFromLast(
                 state: state,
-                message: "동시 워커 프로세스 \(parallelism.count)개"
+                message: VOCRStrings.messageWorkerCount(parallelism.count)
             ))
         }
     }
@@ -126,7 +126,7 @@ final class OCRJobController {
         control.pause()
         emit(snapshot: snapshotFromLast(
             state: .paused,
-            message: "일시정지 요청됨"
+            message: VOCRStrings.messagePauseRequested.text
         ))
     }
 
@@ -138,7 +138,7 @@ final class OCRJobController {
         control.resume()
         emit(snapshot: snapshotFromLast(
             state: .running,
-            message: "이어서 진행"
+            message: VOCRStrings.buttonResume.text
         ))
     }
 
@@ -153,7 +153,7 @@ final class OCRJobController {
         }
         emit(snapshot: snapshotFromLast(
             state: .canceled,
-            message: "취소 요청됨"
+            message: VOCRStrings.messageCancelRequested.text
         ))
     }
 
@@ -191,7 +191,7 @@ final class OCRJobController {
                         && workerCount > 1
 
                     if splitRunner == nil {
-                        log("apple-vision-ocr CLI를 찾지 못해 단일 프로세스로 실행합니다.")
+                        log(VOCRStrings.logCLINotFoundSingleProcess.text)
                     }
 
                     let jobOptions = try OCRJobOptions(
@@ -205,7 +205,7 @@ final class OCRJobController {
                         usesLanguageCorrection: usesLanguageCorrection
                     )
 
-                    log("시작: \(job.inputURL.lastPathComponent)")
+                    log(VOCRStrings.logFileStarted(job.inputURL.lastPathComponent))
                     emitOutput(job.output)
 
                     if canUseSplitRunner, let splitRunner {
@@ -262,11 +262,11 @@ final class OCRJobController {
                             currentFile: job.inputURL.lastPathComponent,
                             aggregate: aggregate,
                             event: nil,
-                            message: "완료: \(job.inputURL.lastPathComponent)"
+                            message: VOCRStrings.messageFileCompleted(job.inputURL.lastPathComponent)
                         )
                     }
                     emit(snapshot: completionSnapshot)
-                    log("완료: \(job.inputURL.lastPathComponent)")
+                    log(VOCRStrings.messageFileCompleted(job.inputURL.lastPathComponent))
                 } catch {
                     firstError = error
                     control.cancel()
@@ -281,7 +281,7 @@ final class OCRJobController {
             } else if control.isCanceled || state == .canceled {
                 finish(state: .canceled, message: "OCR job canceled")
             } else {
-                finish(state: .completed, message: "OCR 작업 완료")
+                finish(state: .completed, message: VOCRStrings.messageOCRJobCompleted.text)
             }
         } catch {
             let finalState: VOCRRunState = control.isCanceled || state == .canceled ? .canceled : .failed

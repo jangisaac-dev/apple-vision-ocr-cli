@@ -17,57 +17,179 @@ final class VOCRAppLifecyclePolicyTests: XCTestCase {
 
     @MainActor
     func testOptionWindowContainsQuitButton() {
-        _ = NSApplication.shared
-        let controller = VOCRWindowController(files: [])
+        for language in [VOCRLanguage.english, .korean] {
+            Self.withLanguage(language) {
+                _ = NSApplication.shared
+                let controller = VOCRWindowController(files: [])
 
-        let hasQuitButton = controller.window?.contentView
-            .flatMap { Self.containsButton(titled: "종료", in: $0) } ?? false
+                let hasQuitButton = controller.window?.contentView
+                    .flatMap { Self.containsButton(titled: VOCRStrings.buttonQuit.text, in: $0) } ?? false
 
-        XCTAssertTrue(hasQuitButton)
+                XCTAssertTrue(hasQuitButton)
+            }
+        }
     }
 
     @MainActor
     func testOptionWindowWarnsThatSpeedModeIsEnglishOnly() {
-        _ = NSApplication.shared
-        let controller = VOCRWindowController(files: [])
+        for language in [VOCRLanguage.english, .korean] {
+            Self.withLanguage(language) {
+                _ = NSApplication.shared
+                let controller = VOCRWindowController(files: [])
 
-        let hasSpeedMode = controller.window?.contentView
-            .flatMap { Self.containsText("속도 우선 (영문 전용)", in: $0) } ?? false
+                let hasSpeedMode = controller.window?.contentView
+                    .flatMap { Self.containsText(VOCRStrings.popupRecognitionSpeedFirst.text, in: $0) } ?? false
 
-        XCTAssertTrue(hasSpeedMode)
+                XCTAssertTrue(hasSpeedMode)
+            }
+        }
     }
 
     @MainActor
     func testOptionWindowContainsKoreanSafeSpeedPreset() {
-        _ = NSApplication.shared
-        let controller = VOCRWindowController(files: [])
+        for language in [VOCRLanguage.english, .korean] {
+            Self.withLanguage(language) {
+                _ = NSApplication.shared
+                let controller = VOCRWindowController(files: [])
 
-        let hasKoreanSafeSpeedPreset = controller.window?.contentView
-            .flatMap { Self.containsText("한국어 속도 균형", in: $0) } ?? false
+                let hasKoreanSafeSpeedPreset = controller.window?.contentView
+                    .flatMap { Self.containsText(VOCRStrings.popupRenderScaleBalanced.text, in: $0) } ?? false
 
-        XCTAssertTrue(hasKoreanSafeSpeedPreset)
+                XCTAssertTrue(hasKoreanSafeSpeedPreset)
+            }
+        }
     }
 
     @MainActor
     func testOptionWindowContainsDisableLanguageCorrectionCheckbox() {
-        _ = NSApplication.shared
-        let controller = VOCRWindowController(files: [])
+        for language in [VOCRLanguage.english, .korean] {
+            Self.withLanguage(language) {
+                _ = NSApplication.shared
+                let controller = VOCRWindowController(files: [])
 
-        let hasCheckbox = controller.window?.contentView
-            .flatMap { Self.containsButton(titled: "언어 보정 끄기 (속도 우선)", in: $0) } ?? false
+                let hasCheckbox = controller.window?.contentView
+                    .flatMap { Self.containsButton(titled: VOCRStrings.checkboxDisableLanguageCorrection.text, in: $0) } ?? false
 
-        XCTAssertTrue(hasCheckbox)
+                XCTAssertTrue(hasCheckbox)
+            }
+        }
     }
 
     @MainActor
     func testOptionWindowLabelsParallelismAsWorkerProcesses() {
-        _ = NSApplication.shared
-        let controller = VOCRWindowController(files: [])
+        for language in [VOCRLanguage.english, .korean] {
+            Self.withLanguage(language) {
+                _ = NSApplication.shared
+                let controller = VOCRWindowController(files: [])
 
-        let hasWorkerProcessLabel = controller.window?.contentView
-            .flatMap { Self.containsText("동시 워커 프로세스 수", in: $0) } ?? false
+                let hasWorkerProcessLabel = controller.window?.contentView
+                    .flatMap { Self.containsText(VOCRStrings.headerWorkerProcessCount.text, in: $0) } ?? false
 
-        XCTAssertTrue(hasWorkerProcessLabel)
+                XCTAssertTrue(hasWorkerProcessLabel)
+            }
+        }
+    }
+
+    func testEveryStringHasEnglishAndKoreanTextWithoutHangulInEnglish() {
+        for (key, entry) in VOCRStrings.all {
+            XCTAssertFalse(entry.english.isEmpty, "Empty English text for \(key)")
+            XCTAssertFalse(entry.korean.isEmpty, "Empty Korean text for \(key)")
+            XCTAssertFalse(
+                entry.english.unicodeScalars.contains { $0.value >= 0xAC00 && $0.value <= 0xD7A3 },
+                "English text contains Hangul for \(key)"
+            )
+        }
+    }
+
+    @MainActor
+    func testInterpolatedStringsRenderTypedValuesInBothLanguages() {
+        let workerCount = 7
+        let fileName = "sample-input.pdf"
+        let generatedFiles = "sample-input_ocr.pdf, sample-input.txt"
+        let recognitionLevel = "accurate"
+        let renderScale = 1.5
+        let parallelism = workerCount
+        let minimumCount = 1
+        let maximumCount = 16
+        let errorDescription = "sample inspection failure"
+        let detail = "sample-input.pdf already contains text"
+        let omittedCount = 3
+
+        for language in [VOCRLanguage.english, .korean] {
+            Self.withLanguage(language) {
+                let entries: [(String, String, [String])] = [
+                    ("logWorkerCountChanged", VOCRStrings.logWorkerCountChanged(workerCount), [String(workerCount)]),
+                    ("messageWorkerCount", VOCRStrings.messageWorkerCount(workerCount), [String(workerCount)]),
+                    ("logFileStarted", VOCRStrings.logFileStarted(fileName), [fileName]),
+                    ("messageFileCompleted", VOCRStrings.messageFileCompleted(fileName), [fileName]),
+                    ("logPlannedOutput", VOCRStrings.logPlannedOutput(fileName), [fileName]),
+                    ("previewGeneratedFiles", VOCRStrings.previewGeneratedFiles(generatedFiles), [generatedFiles]),
+                    (
+                        "logJobStartedWithOptions",
+                        VOCRStrings.logJobStartedWithOptions(
+                            recognitionLevel: recognitionLevel,
+                            renderScale: renderScale,
+                            workerCount: parallelism
+                        ),
+                        [recognitionLevel, String(renderScale), String(parallelism)]
+                    ),
+                    (
+                        "logInvalidParallelism",
+                        VOCRStrings.logInvalidParallelism(
+                            minimumCount: minimumCount,
+                            maximumCount: maximumCount
+                        ),
+                        [String(minimumCount), String(maximumCount)]
+                    ),
+                    (
+                        "logExistingTextInspectionFailed",
+                        VOCRStrings.logExistingTextInspectionFailed(
+                            fileName: fileName,
+                            errorDescription: errorDescription
+                        ),
+                        [fileName, errorDescription]
+                    ),
+                    (
+                        "alertExistingTextBody",
+                        VOCRStrings.alertExistingTextBody(detail: detail, omittedCount: omittedCount),
+                        [detail, String(omittedCount)]
+                    ),
+                    ("alertMoreFiles", VOCRStrings.alertMoreFiles(omittedCount), [String(omittedCount)])
+                ]
+
+                for (key, rendered, samples) in entries {
+                    for sample in samples {
+                        XCTAssertTrue(rendered.contains(sample), "Missing \(sample) in \(key) for \(language)")
+                    }
+                    XCTAssertFalse(rendered.contains(#"\("#), "Unrendered interpolation in \(key) for \(language)")
+                    if language == .english {
+                        XCTAssertFalse(
+                            rendered.unicodeScalars.contains { $0.value >= 0xAC00 && $0.value <= 0xD7A3 },
+                            "English text contains Hangul for \(key)"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    func testLanguageResolverUsesOverrideAndKoreanPreferredLanguage() {
+        XCTAssertEqual(
+            VOCRLanguage.resolve(environmentValue: "en", preferredLanguages: ["ko-KR"]),
+            .english
+        )
+        XCTAssertEqual(
+            VOCRLanguage.resolve(environmentValue: "ko", preferredLanguages: ["en-US"]),
+            .korean
+        )
+        XCTAssertEqual(
+            VOCRLanguage.resolve(environmentValue: "other", preferredLanguages: ["ko-KR"]),
+            .korean
+        )
+        XCTAssertEqual(
+            VOCRLanguage.resolve(environmentValue: nil, preferredLanguages: ["en-US"]),
+            .english
+        )
     }
 
     @MainActor
@@ -100,6 +222,14 @@ final class VOCRAppLifecyclePolicyTests: XCTestCase {
         }
 
         return view.subviews.lazy.compactMap { scrollView(containingText: text, in: $0) }.first
+    }
+
+    @MainActor
+    private static func withLanguage(_ language: VOCRLanguage, body: () -> Void) {
+        let previousLanguage = VOCRStrings.language
+        VOCRStrings.language = language
+        defer { VOCRStrings.language = previousLanguage }
+        body()
     }
 
     @MainActor

@@ -165,6 +165,7 @@ Log locations:
 - `ProgressStore.swift`: Writes atomic JSON progress snapshots to `~/Library/Application Support/VOCR/progress/latest.json`.
 - `StatusItemController.swift`: Manages the macOS menu bar status item, right-click menu, and pause/resume/cancel actions.
 - `VOCRAppLifecyclePolicy.swift`: Determines automatic process termination rules based on final run states (`completed`, `canceled`, `failed`).
+- `VOCRStrings.swift`: Centralized string table and localization lookup for GUI labels, menus, alerts, and log messages (English default, Korean when system language starts with `ko`).
 
 ---
 
@@ -318,6 +319,7 @@ open -n ~/Applications/VOCR.app --args Samples/sample.pdf Samples/sample.pdf
 | Change | Start here | Also touch |
 | :--- | :--- | :--- |
 | Window layout, labels, a new control | `Sources/VOCR/VOCRWindowController.swift` (`buildContent()`, `updateControls(for:)`) | `Tests/VOCRTests/VOCRAppLifecyclePolicyTests.swift` (option-window tests) |
+| GUI text / translations | `Sources/VOCR/VOCRStrings.swift` | `Tests/VOCRTests/` |
 | A GUI option that changes the OCR job | `VOCRWindowController.onStart` | `VOCRAppDelegate.wire(...)` and `startHeadless(...)`, `OCRJobController.start(...)` / `run(...)` |
 | Split vs in-process decision in the GUI | `OCRJobController.run(...)` (`canUseSplitRunner`) | `splitOutput(for:selection:)` |
 | Where the GUI finds the CLI | `OCRJobController.resolveCLIExecutableURL(...)` | `scripts/package-vocr-app.sh` (bundled sibling) |
@@ -430,6 +432,7 @@ Environment variables read by the code, for automation, debugging, and benchmark
 
 | Environment Variable | Target File | Allowed Values / Purpose |
 | :--- | :--- | :--- |
+| `VOCR_LANGUAGE` | `VOCRStrings.swift` | `en` or `ko`: Forces the GUI language (verification seam, like `VOCR_HEADLESS`). |
 | `VOCR_HEADLESS` | `VOCRAppDelegate.swift` | `1` or `pdf`: Automatically starts a searchable PDF job on launch.<br>`txt-pagebreaks`: Automatically starts a page-divided text job.<br>`cancel`: Starts a job and requests cancellation after 1.5s.<br>`pause`: Starts a job, pauses at 1.5s, resumes at 4.0s. |
 | `VOCR_CLI_PATH` | `OCRJobController.swift` | Explicit file path to `apple-vision-ocr` binary for the GUI to invoke child split processes. |
 | `APPLE_VISION_OCR_PARENT_PID` | `AppleVisionOCRCLI/main.swift` | Set by `SplitProcessOCRRunner` for each child. The child checks `getppid()` against it every second and exits when the parent is gone. |

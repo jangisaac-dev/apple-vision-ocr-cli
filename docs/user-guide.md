@@ -151,12 +151,12 @@ choose:
 Apple Vision OCR
 ```
 
-The app lets you choose:
+The GUI follows the macOS language (English by default, Korean when the system language is Korean). The app lets you choose:
 
 ```text
-TXT 추출
-Searchable PDF 생성
-Page 구분자 넣기
+Extract TXT
+Generate Searchable PDF
+Insert page separators
 ```
 
 The menu bar item shows progress while OCR runs. Closing the detail window keeps

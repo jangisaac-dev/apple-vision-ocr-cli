@@ -22,21 +22,21 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
     private var fileListView: NSTextView { fileListScroll.documentView as! NSTextView }
     private let outputPreviewField = NSTextField(wrappingLabelWithString: "")
     private let progressIndicator = NSProgressIndicator()
-    private let progressLabel = NSTextField(labelWithString: "준비됨")
+    private let progressLabel = NSTextField(labelWithString: VOCRStrings.statusReady.text)
     private let logView = NSTextView()
-    private let textCheckbox = NSButton(checkboxWithTitle: "TXT 추출", target: nil, action: nil)
-    private let pageBreakCheckbox = NSButton(checkboxWithTitle: "Page 구분자 넣기", target: nil, action: nil)
-    private let pdfCheckbox = NSButton(checkboxWithTitle: "Searchable PDF 생성", target: nil, action: nil)
+    private let textCheckbox = NSButton(checkboxWithTitle: VOCRStrings.checkboxExtractText.text, target: nil, action: nil)
+    private let pageBreakCheckbox = NSButton(checkboxWithTitle: VOCRStrings.checkboxInsertPageSeparators.text, target: nil, action: nil)
+    private let pdfCheckbox = NSButton(checkboxWithTitle: VOCRStrings.checkboxGenerateSearchablePDF.text, target: nil, action: nil)
     private let recognitionLevelPopup = NSPopUpButton()
     private let renderScalePopup = NSPopUpButton()
-    private let disableLanguageCorrectionCheckbox = NSButton(checkboxWithTitle: "언어 보정 끄기 (속도 우선)", target: nil, action: nil)
+    private let disableLanguageCorrectionCheckbox = NSButton(checkboxWithTitle: VOCRStrings.checkboxDisableLanguageCorrection.text, target: nil, action: nil)
     private let parallelismStepper = NSStepper()
     private let parallelismValueField = NSTextField(labelWithString: "\(VOCRWindowController.defaultWorkerCount)")
-    private let runInBackgroundCheckbox = NSButton(checkboxWithTitle: "시작 후 백그라운드로 전환", target: nil, action: nil)
-    private let startButton = NSButton(title: "시작", target: nil, action: nil)
-    private let pauseButton = NSButton(title: "일시정지", target: nil, action: nil)
-    private let cancelButton = NSButton(title: "취소", target: nil, action: nil)
-    private let quitButton = NSButton(title: "종료", target: nil, action: nil)
+    private let runInBackgroundCheckbox = NSButton(checkboxWithTitle: VOCRStrings.checkboxRunInBackground.text, target: nil, action: nil)
+    private let startButton = NSButton(title: VOCRStrings.buttonStart.text, target: nil, action: nil)
+    private let pauseButton = NSButton(title: VOCRStrings.buttonPause.text, target: nil, action: nil)
+    private let cancelButton = NSButton(title: VOCRStrings.buttonCancel.text, target: nil, action: nil)
+    private let quitButton = NSButton(title: VOCRStrings.buttonQuit.text, target: nil, action: nil)
 
     init(files: [URL]) {
         self.files = files
@@ -68,7 +68,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func noteOutput(_ output: VOCRJobOutput) {
-        var lines = ["출력 예정: \(output.inputURL.lastPathComponent)"]
+        var lines = [VOCRStrings.logPlannedOutput(output.inputURL.lastPathComponent)]
         if let textOutputURL = output.textOutputURL {
             lines.append("TXT: \(textOutputURL.lastPathComponent)")
         }
@@ -98,10 +98,10 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
         let title = NSTextField(labelWithString: "Apple Vision OCR")
         title.font = NSFont.systemFont(ofSize: 20, weight: .semibold)
 
-        let subtitle = NSTextField(labelWithString: "선택한 PDF에 대해 필요한 출력만 생성합니다.")
+        let subtitle = NSTextField(labelWithString: VOCRStrings.labelSubtitle.text)
         subtitle.textColor = .secondaryLabelColor
 
-        let fileHeader = NSTextField(labelWithString: "선택 파일")
+        let fileHeader = NSTextField(labelWithString: VOCRStrings.headerSelectedFiles.text)
         fileHeader.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
         fileListView.isEditable = false
         fileListView.textColor = .secondaryLabelColor
@@ -114,7 +114,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
         fileListScroll.borderType = .bezelBorder
         fileListScroll.heightAnchor.constraint(equalToConstant: 80).isActive = true
 
-        let outputHeader = NSTextField(labelWithString: "출력 방식")
+        let outputHeader = NSTextField(labelWithString: VOCRStrings.headerOutputOptions.text)
         outputHeader.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
 
         textCheckbox.target = self
@@ -134,15 +134,22 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
         outputStack.alignment = .leading
         outputStack.spacing = 8
 
-        let parallelismHeader = NSTextField(labelWithString: "동시 워커 프로세스 수")
+        let parallelismHeader = NSTextField(labelWithString: VOCRStrings.headerWorkerProcessCount.text)
         parallelismHeader.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        let recognitionLevelHeader = NSTextField(labelWithString: "인식 모드")
+        let recognitionLevelHeader = NSTextField(labelWithString: VOCRStrings.headerRecognitionMode.text)
         recognitionLevelHeader.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        recognitionLevelPopup.addItems(withTitles: ["정확도 우선", "속도 우선 (영문 전용)"])
+        recognitionLevelPopup.addItems(withTitles: [
+            VOCRStrings.popupRecognitionAccuracyFirst.text,
+            VOCRStrings.popupRecognitionSpeedFirst.text
+        ])
         recognitionLevelPopup.selectItem(at: 0)
-        let renderScaleHeader = NSTextField(labelWithString: "한국어 속도/품질")
+        let renderScaleHeader = NSTextField(labelWithString: VOCRStrings.headerRenderScale.text)
         renderScaleHeader.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        renderScalePopup.addItems(withTitles: ["품질 우선 (2.0x)", "한국어 속도 균형 (1.5x)", "빠른 초안 (1.25x)"])
+        renderScalePopup.addItems(withTitles: [
+            VOCRStrings.popupRenderScaleQuality.text,
+            VOCRStrings.popupRenderScaleBalanced.text,
+            VOCRStrings.popupRenderScaleFastDraft.text
+        ])
         renderScalePopup.selectItem(at: 0)
 
         let recognitionLevelStack = NSStackView(views: [recognitionLevelHeader, recognitionLevelPopup])
@@ -237,7 +244,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
 
     private func updateFileList() {
         if files.isEmpty {
-            fileListView.string = "PDF 파일이 전달되지 않았습니다."
+            fileListView.string = VOCRStrings.placeholderNoPDFFiles.text
         } else {
             fileListView.string = files.map(\.path).joined(separator: "\n")
         }
@@ -251,7 +258,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
 
         startButton.isEnabled = !isBusy && !files.isEmpty && hasAnyOutputSelected
         pauseButton.isEnabled = isBusy
-        pauseButton.title = isPaused ? "이어서 진행" : "일시정지"
+        pauseButton.title = isPaused ? VOCRStrings.buttonResume.text : VOCRStrings.buttonPause.text
         cancelButton.isEnabled = isBusy
         quitButton.isEnabled = !isBusy
         textCheckbox.isEnabled = !isBusy
@@ -306,7 +313,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
 
     private func outputPreviewText() -> String {
         guard hasAnyOutputSelected else {
-            return "TXT 추출 또는 Searchable PDF 생성 중 하나 이상을 선택하세요."
+            return VOCRStrings.validationMissingOutput.text
         }
 
         var outputs: [String] = []
@@ -317,9 +324,9 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
             outputs.append("input_ocr.pdf")
         }
 
-        var text = "생성 파일: \(outputs.joined(separator: ", "))"
+        var text = VOCRStrings.previewGeneratedFiles(outputs.joined(separator: ", "))
         if pageBreakCheckbox.state == .on {
-            text += " · 구분자: ===== Page N ====="
+            text += VOCRStrings.previewPageSeparator.text
         }
         return text
     }
@@ -362,23 +369,30 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
             let shouldRunInBackground = runInBackgroundCheckbox.state == .on
             if recognitionLevel == .fast {
                 recognitionLevelPopup.selectItem(at: 0)
-                appendLog("속도 우선은 현재 Apple Vision에서 한국어 인식을 지원하지 않습니다. 정확도 우선으로 실행하세요.")
+                appendLog(VOCRStrings.logSpeedFirstKoreanUnsupported.text)
                 return
             }
             guard confirmExistingSearchableTextIfNeeded(selection: selection) else {
                 return
             }
-            appendLog("작업 시작: \(recognitionLevel.rawValue) · 렌더 \(renderScale.value)x · 동시 워커 프로세스 \(parallelism.count)개")
+            appendLog(VOCRStrings.logJobStartedWithOptions(
+                recognitionLevel: recognitionLevel.rawValue,
+                renderScale: renderScale.value,
+                workerCount: parallelism.count
+            ))
             if shouldRunInBackground {
                 window?.orderOut(nil)
             }
             onStart(selection, parallelism, recognitionLevel, renderScale, usesLanguageCorrection, shouldRunInBackground)
         } catch OCRJobOptionError.missingOutput {
-            appendLog("TXT 추출 또는 Searchable PDF 생성 중 하나 이상을 선택하세요.")
+            appendLog(VOCRStrings.validationMissingOutput.text)
         } catch OCRJobOptionError.pageBreaksRequireText {
-            appendLog("Page 구분자는 TXT 추출을 선택해야 사용할 수 있습니다.")
+            appendLog(VOCRStrings.logPageBreaksRequireText.text)
         } catch OCRJobOptionError.invalidParallelism {
-            appendLog("동시 워커 프로세스 수는 \(OCRJobParallelism.minimumCount)-\(OCRJobParallelism.maximumCount) 사이여야 합니다.")
+            appendLog(VOCRStrings.logInvalidParallelism(
+                minimumCount: OCRJobParallelism.minimumCount,
+                maximumCount: OCRJobParallelism.maximumCount
+            ))
         } catch {
             appendLog(error.localizedDescription)
         }
@@ -416,7 +430,10 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
                 let report = try textPresenceDetector.inspect(file)
                 return report.hasText ? (file, report) : nil
             } catch {
-                appendLog("기존 텍스트 검사 실패: \(file.lastPathComponent) · \(error.localizedDescription)")
+                appendLog(VOCRStrings.logExistingTextInspectionFailed(
+                    fileName: file.lastPathComponent,
+                    errorDescription: error.localizedDescription
+                ))
                 return nil
             }
         }
@@ -431,15 +448,13 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
 
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "이미 선택 가능한 텍스트가 있는 PDF가 있습니다."
-        alert.informativeText = """
-        계속 진행하면 해당 페이지를 이미지로 평탄화한 뒤 새 OCR 텍스트만 다시 얹습니다.
-        이렇게 하면 기존 searchable 텍스트가 중복 선택되는 문제를 피할 수 있습니다. 원본 PDF는 변경하지 않습니다.
-
-        \(detail)\(omittedCount > 0 ? "\n외 \(omittedCount)개 파일" : "")
-        """
-        alert.addButton(withTitle: "계속 진행")
-        alert.addButton(withTitle: "취소")
+        alert.messageText = VOCRStrings.alertExistingTextMessage.text
+        alert.informativeText = VOCRStrings.alertExistingTextBody(
+            detail: detail,
+            omittedCount: omittedCount
+        )
+        alert.addButton(withTitle: VOCRStrings.buttonContinue.text)
+        alert.addButton(withTitle: VOCRStrings.buttonCancel.text)
 
         return alert.runModal() == .alertFirstButtonReturn
     }

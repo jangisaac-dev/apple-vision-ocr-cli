@@ -15,7 +15,7 @@ final class StatusItemController: NSObject {
         completedPages: 0,
         totalPages: 0,
         percent: 0,
-        message: "준비됨"
+        message: VOCRStrings.statusReady.text
     )
 
     override init() {
@@ -35,11 +35,11 @@ final class StatusItemController: NSObject {
         case .running, .paused:
             button.title = "VOCR \(snapshot.percent)%"
         case .completed:
-            button.title = "VOCR 완료"
+            button.title = VOCRStrings.statusItemCompleted.text
         case .failed:
-            button.title = "VOCR 실패"
+            button.title = VOCRStrings.statusItemFailed.text
         case .canceled:
-            button.title = "VOCR 취소"
+            button.title = VOCRStrings.statusItemCanceled.text
         case .idle:
             button.title = "VOCR"
         }
@@ -75,7 +75,7 @@ final class StatusItemController: NSObject {
         menu.addItem(.separator())
 
         menu.addItem(NSMenuItem(
-            title: "상세 창 보기",
+            title: VOCRStrings.menuShowDetails.text,
             action: #selector(showWindow),
             keyEquivalent: ""
         ).targeting(self))
@@ -83,30 +83,30 @@ final class StatusItemController: NSObject {
         switch snapshot.state {
         case .running:
             menu.addItem(NSMenuItem(
-                title: "일시정지",
+                title: VOCRStrings.buttonPause.text,
                 action: #selector(pause),
                 keyEquivalent: ""
             ).targeting(self))
             menu.addItem(NSMenuItem(
-                title: "취소",
+                title: VOCRStrings.buttonCancel.text,
                 action: #selector(cancel),
                 keyEquivalent: ""
             ).targeting(self))
         case .paused:
             menu.addItem(NSMenuItem(
-                title: "이어서 진행",
+                title: VOCRStrings.buttonResume.text,
                 action: #selector(resume),
                 keyEquivalent: ""
             ).targeting(self))
             menu.addItem(NSMenuItem(
-                title: "취소",
+                title: VOCRStrings.buttonCancel.text,
                 action: #selector(cancel),
                 keyEquivalent: ""
             ).targeting(self))
         default:
             menu.addItem(.separator())
             menu.addItem(NSMenuItem(
-                title: "종료",
+                title: VOCRStrings.buttonQuit.text,
                 action: #selector(quit),
                 keyEquivalent: "q"
             ).targeting(self))
@@ -120,13 +120,13 @@ final class StatusItemController: NSObject {
         case .running, .paused:
             return "\(snapshot.message) · \(snapshot.percent)%"
         case .idle:
-            return "준비됨"
+            return VOCRStrings.statusReady.text
         case .completed:
-            return "완료됨"
+            return VOCRStrings.statusCompleted.text
         case .failed:
-            return "실패"
+            return VOCRStrings.statusFailed.text
         case .canceled:
-            return "취소됨"
+            return VOCRStrings.statusCanceled.text
         }
     }
 

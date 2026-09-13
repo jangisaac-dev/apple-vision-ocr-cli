@@ -32,7 +32,12 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 <plist version="1.0">
 <dict>
   <key>CFBundleDevelopmentRegion</key>
-  <string>ko</string>
+  <string>en</string>
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>en</string>
+    <string>ko</string>
+  </array>
   <key>CFBundleExecutable</key>
   <string>VOCR</string>
   <key>CFBundleIdentifier</key>

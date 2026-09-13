@@ -159,28 +159,28 @@ Finder shows one Quick Action:
 Apple Vision OCR
 ```
 
-Selecting it opens `VOCR.app`. The detail window has independent output checkboxes:
+Selecting it opens `VOCR.app`. The GUI follows the macOS language (English by default, Korean when the system language is Korean). The detail window has independent output checkboxes:
 
 ```text
-TXT 추출                    -> input.txt
-  Page 구분자 넣기           -> adds ===== Page N ===== headings to TXT
-Searchable PDF 생성          -> input_ocr.pdf
+Extract TXT                 -> input.txt
+  Insert page separators     -> adds ===== Page N ===== headings to TXT
+Generate Searchable PDF      -> input_ocr.pdf
 ```
 
-You can select TXT, Searchable PDF, or both. `Page 구분자 넣기` is only available when `TXT 추출` is selected.
+You can select TXT, Searchable PDF, or both. `Insert page separators` is only available when `Extract TXT` is selected.
 
-The `동시 워커 프로세스 수` control defaults to an auto value based on CPU cores (about two-thirds of the active processors, capped at 16) and sets how many child OCR processes run in parallel. When it is 2 or more, VOCR splits the document across that many `apple-vision-ocr` worker processes for TXT, Searchable PDF, or both — Apple Vision serializes recognition within one process, so multi-process is what actually uses every core (about 6x faster on long PDFs). When set to 1, VOCR runs the in-process single-process path instead. The bundled CLI is found inside `VOCR.app` (or via `VOCR_CLI_PATH`); if it cannot be found, VOCR falls back to single-process and notes it in the log.
+The `Worker process count` control defaults to an auto value based on CPU cores (about two-thirds of the active processors, capped at 16) and sets how many child OCR processes run in parallel. When it is 2 or more, VOCR splits the document across that many `apple-vision-ocr` worker processes for TXT, Searchable PDF, or both — Apple Vision serializes recognition within one process, so multi-process is what actually uses every core (about 6x faster on long PDFs). When set to 1, VOCR runs the in-process single-process path instead. The bundled CLI is found inside `VOCR.app` (or via `VOCR_CLI_PATH`); if it cannot be found, VOCR falls back to single-process and notes it in the log.
 
-The `인식 모드` control shows `정확도 우선` and `속도 우선 (영문 전용)`. `속도 우선` is blocked for the current Korean-default workflow because Apple Vision's fast text-recognition level does not support Korean.
-The `한국어 속도/품질` control keeps Korean OCR on `정확도 우선` and adjusts only the PDF render scale:
+The `Recognition mode` control shows `Accuracy first` and `Speed first (English only)`. `Speed first` is blocked for the current Korean-default workflow because Apple Vision's fast text-recognition level does not support Korean.
+The `Korean speed/quality` control keeps Korean OCR on `Accuracy first` and adjusts only the PDF render scale:
 
 ```text
-품질 우선 (2.0x)
-한국어 속도 균형 (1.5x)
-빠른 초안 (1.25x)
+Quality first (2.0x)
+Balanced Korean speed (1.5x)
+Fast draft (1.25x)
 ```
 
-`시작 후 백그라운드로 전환` controls whether pressing `시작` hides the detail window and leaves progress in the menu bar. If unchecked, the detail window stays in front while OCR runs.
+`Switch to background after starting` controls whether pressing `Start` hides the detail window and leaves progress in the menu bar. If unchecked, the detail window stays in front while OCR runs.
 
 The GUI uses safe sibling names if output already exists:
 
@@ -198,18 +198,18 @@ VOCR 38%
 Left-click opens the detail window. Right-click opens controls:
 
 ```text
-상세 창 보기
-일시정지 / 이어서 진행
-취소
-종료
+Show Details
+Pause / Resume
+Cancel
+Quit
 ```
 
 Pause and cancel are applied at page boundaries. A page already inside Apple Vision recognition is allowed to finish first.
 VOCR runs as a menu bar agent (`LSUIElement`), so it never shows a Dock icon — at launch the window appears without a Dock tile, and OCR runs in the background from the menu bar. Closing the detail window keeps VOCR running from the menu bar.
-The option window also includes `종료` when OCR is not running.
-When a job reaches a terminal state (`완료`, `취소`, or `실패`), VOCR exits automatically after a short delay.
+The option window also includes `Quit` when OCR is not running.
+When a job reaches a terminal state (`Completed`, `Canceled`, or `Failed`), VOCR exits automatically after a short delay.
 
-If a selected PDF already contains selectable/searchable text and `Searchable PDF 생성` is selected, VOCR shows a warning before starting. If you continue, pages with existing selectable text are rasterized first, then new OCR text is overlaid. This avoids duplicate selectable text while preserving the original PDF file.
+If a selected PDF already contains selectable/searchable text and `Generate Searchable PDF` is selected, VOCR shows a warning before starting. If you continue, pages with existing selectable text are rasterized first, then new OCR text is overlaid. This avoids duplicate selectable text while preserving the original PDF file.
 
 Planned future work for image-internal page numbers and partial page selection is documented in:
 

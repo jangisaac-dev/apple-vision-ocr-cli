@@ -134,7 +134,7 @@ scripts/install-vocr-quick-action.sh
 Apple Vision OCR
 ```
 
-앱에서 다음을 선택할 수 있습니다:
+GUI는 macOS 언어를 따릅니다: 기본은 영어, 시스템 언어가 한국어면 한국어. 앱에서 다음을 선택할 수 있습니다:
 
 ```text
 TXT 추출

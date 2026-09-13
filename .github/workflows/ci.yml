@@ -11,6 +11,6 @@ jobs:
       SWIFTPM_HOME: .build/swiftpm-home
       CLANG_MODULE_CACHE_PATH: .build/module-cache
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: swift build -c release
       - run: swift test

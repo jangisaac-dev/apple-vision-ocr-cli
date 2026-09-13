@@ -28,7 +28,7 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
 
         if files.isEmpty {
-            windowController.appendLog("Finder에서 PDF 파일을 선택한 뒤 Apple Vision OCR을 실행하세요.")
+            windowController.appendLog(VOCRStrings.logSelectPDFInFinder.text)
         } else if Self.headlessMode != nil {
             startHeadless(jobController: jobController)
         }
