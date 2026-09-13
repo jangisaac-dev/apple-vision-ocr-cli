@@ -1,6 +1,6 @@
 # Current Status
 
-Updated: 2026-09-13
+Updated: 2026-09-13 (v1.1.0)
 
 ## Current Objective
 
@@ -33,6 +33,9 @@ The current goal is:
 - VOCR GUI (the Finder right-click path) now uses multi-process parallelism (2026-06-13). The split/merge logic was extracted into shared `Sources/AppleVisionOCRCore/SplitProcessOCRRunner.swift` (spawns `apple-vision-ocr` page-range children, parses their "Completed page" stderr lines for live progress, merges PDFs / concatenates text, supports cancel via `OCRJobControl` and pause via SIGSTOP/SIGCONT). Both CLI runners are now thin wrappers over it. `OCRJobController` uses the shared runner when the worker count is >= 2, and falls back to the in-process pipeline for worker count 1 or when the CLI binary cannot be located. (Updated 2026-09-13: originally combined TXT+PDF also fell back to in-process; since 2026-09-10 (`436fddc`) combined output splits too via `SplitProcessOCRRunner.Output.searchablePDFAndText`.) The GUI "동시 OCR 페이지 수" stepper became "동시 워커 프로세스 수" (auto-default ~= activeProcessorCount*2/3, capped 16). `apple-vision-ocr` is now bundled inside `VOCR.app/Contents/MacOS/` (package-vocr-app.sh); the GUI locates it via `VOCR_CLI_PATH` > bundle sibling > `~/.local/bin` > PATH. A `VOCR_HEADLESS=1` env seam auto-runs a default searchable-PDF job for end-to-end testing.
 - Searchable PDF split-worker support is now IMPLEMENTED (2026-06-12), following the previously-deferred safe design. New `Sources/AppleVisionOCRCLI/ChunkedPDFOCRRunner.swift` runs child processes over non-overlapping page ranges (`--output chunk.pdf --page-range A-B`), each producing a per-range searchable PDF via the proven single-process pipeline, then the parent merges them in page order. The merge uses CoreGraphics `CGContext.drawPDFPage` (the same mechanism `PDFTextOverlayWriter` already uses to copy original pages), NOT the rejected PDFKit chunk-rewrite approach, so the invisible OCR text layer is preserved unchanged. The `--split-workers` / `--page-range` validation was relaxed from "text-only" to "single output mode" (text-only XOR PDF-only); simultaneous text+PDF (`--txt`) and `--page-breaks` remain rejected. Routing: `CommandRunner` sends `splitWorkers` + a PDF output URL to `ChunkedPDFOCRRunner`, otherwise to `ChunkedTextOCRRunner`. (Updated 2026-09-13: both restrictions have since been lifted — `--page-breaks` on 2026-06-13, combined text+PDF on 2026-09-10. `CommandRunner` now sends PDF+TXT to `SplitProcessOCRRunner` with `.searchablePDFAndText`, PDF-only to `ChunkedPDFOCRRunner`, and TXT-only to `ChunkedTextOCRRunner`.)
 - VOCR selected-file list is a fixed-height (80 pt), non-wrapping `NSTextView.scrollableTextView()` that scrolls vertically and horizontally (2026-09-13). The old wrapping label grew with the file count and pushed the progress, log, and buttons out of the fixed 580 pt window. Verified by installing with `scripts/install-vocr-quick-action.sh` and opening `~/Applications/VOCR.app` with 30 long-path PDFs. Modification guide: `docs/architecture-and-modification-guide.md`.
+- Fixed (2026-09-13): `--page-range` was silently ignored under `--split-workers` — the split runner always planned chunks over the whole document (reproduced: 5-page PDF, `--page-range 2-3 --split-workers 2` produced pages 1-5). `SplitProcessOCRRunner.run` now takes `pageRange`, plans chunks over the selected pages, and rejects a range past the last page; all three CLI split routes pass it. Regression test: `testRunSplitsOnlyTheRequestedPageRange`.
+- Installer (2026-09-13): `scripts/install-vocr-quick-action.sh` installs a prebuilt `VOCR.app` when one sits next to it (release package) and builds only from a checkout; it replaces the app via a staged copy, strips quarantine, installs the CLI from the app bundle, and bakes `VOCR_APP` into the Finder workflow so custom `VOCR_APP_INSTALL_DIR` installs launch the right app (previously the wrapper always opened `~/Applications/VOCR.app`).
+- Release packaging (2026-09-13): `scripts/make-release-package.sh` builds `.release/VOCR-<version>-macos-<arch>.zip` (app, installer, `Install.command`, `README.txt`, `LICENSE`) with a SHA-256 file. v1.1.0 ships arm64 only; the app is ad-hoc signed and not notarized.
 
 ## Fresh Verification
 
@@ -53,7 +56,7 @@ The current goal is:
 - 2026-06-13: CLI now allows `--split-workers` together with `--page-breaks` (previously rejected), matching the GUI. The CLIOptions guard against the combination was removed; `ChunkedTextOCRRunner` passes `options.includePageBreaks` to `SplitProcessOCRRunner`. It resolves to text-only + page-divided output (page-breaks already require text output, split requires a single output mode). Verified: `--txt-only --page-breaks --split-workers 4` on a 9-page PDF produced all 9 `===== Page N =====` markers in order. Test `testSplitWorkersRejectPageBreaks` replaced with `testSplitWorkersAllowPageBreaksWithTextOnly`.
 - 2026-06-13: Fixed a regression where the GUI "Page 구분자 넣기" (page-divided TXT) lost its `===== Page N =====` markers. Root cause: page-divided TXT is single output mode, so it routed through the split path, but `SplitProcessOCRRunner` did not pass `--page-breaks` to its page-range child processes. Fix: thread an `includePageBreaks` flag through `SplitProcessOCRRunner.run` → child args (`--page-breaks` for `.text`); `OCRJobController` passes `selection.includesPageBreaks`. Children emit absolute page numbers in their range, so the concatenated output is correct and still parallel. Verified via the headless seam (`VOCR_HEADLESS=txt-pagebreaks`): 7-page PDF produced all 7 markers in order. (The CLI still rejects `--split-workers` + `--page-breaks`; only the GUI path was affected/fixed.)
 - 2026-06-13: VOCR is now a menu bar agent — `LSUIElement` added to the app Info.plist (package-vocr-app.sh) and all `NSApp.setActivationPolicy(.regular)` calls removed from VOCRAppDelegate, so the app never shows a Dock icon (verified at runtime: NSWorkspace reports `.accessory`, lsappinfo reports `type="UIElement"`). The split worker child processes were already `.prohibited` (no Dock). Net: repeated Finder OCR runs no longer pile up Dock icons. (Finder action still uses `open -n`; single-instance reuse was left out of scope since LSUIElement removes the Dock clutter on its own.)
-- 2026-06-13: GUI split path verified headless on the 24-page dense PDF. `VOCR_HEADLESS=1 VOCR_CLI_PATH=... ./.build/release/VOCR dense.pdf` produced `dense_ocr.pdf` (24 pages, 49415 extracted chars) in ~6.5s vs ~26s single-process. Also verified the packaged `VOCR.app` (no VOCR_CLI_PATH) self-locates the bundled sibling CLI and runs the split path in ~6.6s. Combined TXT+PDF still runs the in-process path.
+- 2026-06-13: GUI split path verified headless on the 24-page dense PDF. `VOCR_HEADLESS=1 VOCR_CLI_PATH=... ./.build/release/VOCR dense.pdf` produced `dense_ocr.pdf` (24 pages, 49415 extracted chars) in ~6.5s vs ~26s single-process. Also verified the packaged `VOCR.app` (no VOCR_CLI_PATH) self-locates the bundled sibling CLI and runs the split path in ~6.6s. Combined TXT+PDF still runs the in-process path. (Updated 2026-09-13: combined TXT+PDF splits too since 2026-09-10, `436fddc`.)
 - 2026-06-13: Cancel and pause E2E-verified on the split path via headless seams (`VOCR_HEADLESS=cancel` / `=pause`) on a 60-page PDF (full run ~13.4s). Cancel: 12 workers spawned, cancel fired at 1.5s, all workers terminated within ~0.7s, app exited at 2.3s, no orphan processes, no output written. Pause/resume: workers observed in `T` (stopped) state for the entire pause window (1.5s–4s) via `ps stat`, returned to `R` after resume, and the job completed with full 60-page output (wall ~15.7s = work + pause). The `cancel`/`pause` headless modes are gated test affordances alongside the existing `VOCR_HEADLESS` seam.
 
 - 2026-09-09: Automated-test / speed / stability round. `swift build -c release` and
@@ -92,6 +95,20 @@ The current goal is:
   line. NOT applied — single machine, single document.
   Correction to an earlier note: `--page-parallelism` is NOT a no-op under split — child
   `pp=1` at 12 workers is 10% slower (54.42s) while saving 9% RSS (3853 MB).
+- 2026-09-13 (v1.1.0): `swift test` passed: 105 tests, 0 failures. New
+  `testFileListScrollsHorizontallyInsteadOfWrappingLongPaths` was mutation-checked (fails with
+  `widthTracksTextView = true`). `scripts/make-release-package.sh` produced
+  `VOCR-1.1.0-macos-arm64.zip` (no AppleDouble entries, no personal paths in text or binaries;
+  both binaries declare `minos 13.0`, SDK 26.5). Installed from the unzipped, quarantine-marked
+  package into a fake `HOME` with app dir `My Apps & Tools` and bin dir `bin dir`, twice: no
+  build ran, quarantine removed, `codesign --verify --deep --strict` and `plutil -lint` OK,
+  app and CLI report 1.1.0, and the workflow command (shell-quoted, XML-escaped) launched the
+  app from the custom dir. Packaged CLI on a 5-page fixture with `--split-workers 2`:
+  `--txt-only --page-range 2-3` → pages 2-3; `--page-range 3-4` PDF → 2 pages; TXT+PDF
+  `--page-range 4-5` → pages 4-5 and a 2-page PDF; `--page-range 4-6` → exit 1
+  `page range 4-6 exceeds page count 5`. Packaged app `VOCR_HEADLESS=1` on a 6-page fixture
+  → 6-page `_ocr.pdf` in 7s. Not verified: a real macOS 13 machine, Intel, and the
+  Gatekeeper dialog for a downloaded `Install.command`.
 
 ## Installed Artifact Verification
 

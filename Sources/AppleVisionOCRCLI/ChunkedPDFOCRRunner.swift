@@ -33,7 +33,8 @@ final class ChunkedPDFOCRRunner {
             languages: options.languages,
             recognitionLevel: options.recognitionLevel,
             renderScale: options.renderScale,
-            usesLanguageCorrection: options.usesLanguageCorrection
+            usesLanguageCorrection: options.usesLanguageCorrection,
+            pageRange: options.pageRange
         )
     }
 }

@@ -31,6 +31,7 @@ public final class SplitProcessOCRRunner {
         renderScale: OCRRenderScale,
         usesLanguageCorrection: Bool = true,
         includePageBreaks: Bool = false,
+        pageRange: ClosedRange<Int>? = nil,
         control: OCRJobControl = OCRJobControl(),
         onProgress: ((ProgressUpdate) -> Void)? = nil
     ) throws {
@@ -43,7 +44,14 @@ public final class SplitProcessOCRRunner {
             throw AppleVisionOCRError.pdfFailure("input PDF has no pages: \(inputURL.path)")
         }
 
-        let effectiveWorkers = max(1, min(workerCount, pageCount))
+        let selectedPages = pageRange ?? 1...pageCount
+        guard selectedPages.lowerBound >= 1, selectedPages.upperBound <= pageCount else {
+            throw AppleVisionOCRError.invalidUsage(
+                "page range \(selectedPages.lowerBound)-\(selectedPages.upperBound) exceeds page count \(pageCount)"
+            )
+        }
+        let pageOffset = selectedPages.lowerBound - 1
+        let effectiveWorkers = max(1, min(workerCount, selectedPages.count))
         let temporaryRoot = fileManager.temporaryDirectory
             .appendingPathComponent("apple-vision-ocr-split-\(UUID().uuidString)", isDirectory: true)
         let outputDirectory = temporaryRoot.appendingPathComponent("out", isDirectory: true)
@@ -60,7 +68,9 @@ public final class SplitProcessOCRRunner {
             }
         }
 
-        let chunks = Self.planChunks(pageCount: pageCount, workerCount: effectiveWorkers).enumerated().map {
+        let chunks = Self.planChunks(pageCount: selectedPages.count, workerCount: effectiveWorkers)
+            .map { ($0.lowerBound + pageOffset)...($0.upperBound + pageOffset) }
+            .enumerated().map {
             let baseURL = outputDirectory.appendingPathComponent("chunk-\($0.offset)")
             return Chunk(
                 index: $0.offset,
@@ -79,7 +89,7 @@ public final class SplitProcessOCRRunner {
             renderScale: renderScale,
             usesLanguageCorrection: usesLanguageCorrection,
             includePageBreaks: includePageBreaks,
-            totalPages: pageCount,
+            totalPages: selectedPages.count,
             control: control,
             onProgress: onProgress
         )

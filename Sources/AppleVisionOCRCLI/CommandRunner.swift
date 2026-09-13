@@ -2,7 +2,7 @@ import Foundation
 import AppleVisionOCRCore
 
 public final class CommandRunner {
-    public static let version = "1.0.0"
+    public static let version = "1.1.0"
 
     private let stdout: (String) -> Void
     private let stderr: (String) -> Void
@@ -58,7 +58,8 @@ public final class CommandRunner {
                             recognitionLevel: options.recognitionLevel,
                             renderScale: options.renderScale,
                             usesLanguageCorrection: options.usesLanguageCorrection,
-                            includePageBreaks: options.includePageBreaks
+                            includePageBreaks: options.includePageBreaks,
+                            pageRange: options.pageRange
                         )
                     } else if options.outputURL != nil {
                         try ChunkedPDFOCRRunner(

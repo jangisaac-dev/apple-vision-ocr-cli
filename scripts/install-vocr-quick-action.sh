@@ -1,24 +1,47 @@
 #!/bin/zsh
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_INSTALL_DIR="${VOCR_APP_INSTALL_DIR:-$HOME/Applications}"
 BIN_DIR="${VOCR_BIN_DIR:-$HOME/.local/bin}"
+APP="$APP_INSTALL_DIR/VOCR.app"
 FINDER_ACTION="$BIN_DIR/vocr-finder-action"
 WORKFLOW="$HOME/Library/Services/Apple Vision OCR.workflow"
 WORKFLOW_CONTENTS="$WORKFLOW/Contents"
 
-"$ROOT/scripts/package-vocr-app.sh"
+if [[ -d "$SCRIPT_DIR/VOCR.app" ]]; then
+  # Release package: the prebuilt app and wrappers sit next to this script.
+  APP_SOURCE="$SCRIPT_DIR/VOCR.app"
+  WRAPPER_SOURCE_DIR="$SCRIPT_DIR"
+else
+  ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+  "$ROOT/scripts/package-vocr-app.sh"
+  APP_SOURCE="$ROOT/.workflow_build/VOCR.app"
+  WRAPPER_SOURCE_DIR="$ROOT/scripts"
+fi
 
 mkdir -p "$APP_INSTALL_DIR" "$BIN_DIR" "$HOME/Library/Services"
 
-rm -rf "$APP_INSTALL_DIR/VOCR.app"
-cp -R "$ROOT/.workflow_build/VOCR.app" "$APP_INSTALL_DIR/VOCR.app"
+# Copy beside the old app first so a failed copy leaves the existing install intact.
+rm -rf "$APP.installing"
+cp -R "$APP_SOURCE" "$APP.installing"
+# Downloaded packages are quarantined; the app is ad-hoc signed, not notarized.
+xattr -dr com.apple.quarantine "$APP.installing" 2>/dev/null || true
+rm -rf "$APP"
+mv "$APP.installing" "$APP"
 
-cp "$ROOT/.build/release/apple-vision-ocr" "$BIN_DIR/apple-vision-ocr"
-cp "$ROOT/scripts/vocr-finder-action.sh" "$BIN_DIR/vocr-finder-action"
-cp "$ROOT/scripts/apple-vision-ocr-finder-action.sh" "$BIN_DIR/apple-vision-ocr-finder-action"
+cp "$APP/Contents/MacOS/apple-vision-ocr" "$BIN_DIR/apple-vision-ocr"
+cp "$WRAPPER_SOURCE_DIR/vocr-finder-action.sh" "$BIN_DIR/vocr-finder-action"
+cp "$WRAPPER_SOURCE_DIR/apple-vision-ocr-finder-action.sh" "$BIN_DIR/apple-vision-ocr-finder-action"
 chmod 755 "$BIN_DIR/apple-vision-ocr" "$BIN_DIR/vocr-finder-action" "$BIN_DIR/apple-vision-ocr-finder-action"
+xattr -d com.apple.quarantine "$BIN_DIR/apple-vision-ocr" "$BIN_DIR/vocr-finder-action" "$BIN_DIR/apple-vision-ocr-finder-action" 2>/dev/null || true
+
+# The workflow command is shell code inside XML: shell-quote the paths, then XML-escape.
+COMMAND="#!/bin/zsh
+VOCR_APP=${(q)APP} exec ${(q)FINDER_ACTION} \"\$@\""
+COMMAND_XML=${COMMAND//&/&amp;}
+COMMAND_XML=${COMMAND_XML//</&lt;}
+COMMAND_XML=${COMMAND_XML//>/&gt;}
 
 rm -rf "$WORKFLOW"
 mkdir -p "$WORKFLOW_CONTENTS"
@@ -84,8 +107,7 @@ cat > "$WORKFLOW_CONTENTS/document.wflow" <<PLIST
           <key>CheckedForUserDefaultShell</key>
           <true/>
           <key>COMMAND_STRING</key>
-          <string>#!/bin/zsh
-exec "$FINDER_ACTION" "\$@"</string>
+          <string>$COMMAND_XML</string>
           <key>inputMethod</key>
           <integer>1</integer>
           <key>shell</key>

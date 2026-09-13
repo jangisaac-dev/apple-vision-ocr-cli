@@ -214,12 +214,16 @@ pgrep -fl "VOCR|apple-vision-ocr|swift-build|swiftc|git remote-https|git-remote-
 If a process appears, only stop it when it was started by the current task. Do
 not kill unrelated user processes.
 
-## Release 1.0.0 Checklist
+## Release Checklist
 
-1. `swift test` passes.
-2. `scripts/package-vocr-app.sh` passes.
-3. `codesign` and `plutil` checks pass.
-4. Sample OCR smoke passes outside restricted sandboxes when needed.
-5. Privacy scans do not show secrets or personal metadata.
-6. `README.md`, `docs/user-guide.md`, and this guide are current.
-7. Tag `v1.0.0` points at the release commit.
+1. Bump `CommandRunner.version` and `CFBundleShortVersionString` / `CFBundleVersion` in `scripts/package-vocr-app.sh`.
+2. `swift test` passes.
+3. `scripts/make-release-package.sh` passes (it runs `scripts/package-vocr-app.sh`) and writes
+   `.release/VOCR-<version>-macos-<arch>.zip` plus `.zip.sha256`.
+4. `codesign` and `plutil` checks pass.
+5. Sample OCR smoke passes outside restricted sandboxes when needed.
+6. Install from the unzipped package into a fake `HOME` (see Isolated Installer Verification; run the
+   package's `install-vocr-quick-action.sh` instead of the checkout's) and confirm it does not build.
+7. Privacy scans do not show secrets or personal metadata.
+8. `README.md`, `docs/user-guide.md`, and this guide are current.
+9. Tag `v<version>` points at the release commit; the GitHub Release has the zip and its SHA-256.

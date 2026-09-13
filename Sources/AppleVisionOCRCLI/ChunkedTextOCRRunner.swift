@@ -34,7 +34,8 @@ final class ChunkedTextOCRRunner {
             recognitionLevel: options.recognitionLevel,
             renderScale: options.renderScale,
             usesLanguageCorrection: options.usesLanguageCorrection,
-            includePageBreaks: options.includePageBreaks
+            includePageBreaks: options.includePageBreaks,
+            pageRange: options.pageRange
         )
     }
 }

@@ -99,6 +99,51 @@ final class SplitProcessOCRRunnerProcessTests: XCTestCase {
         try assertRecordedProcessesExited(in: directory)
     }
 
+    func testRunSplitsOnlyTheRequestedPageRange() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let inputURL = directory.appendingPathComponent("input.pdf")
+        let outputURL = directory.appendingPathComponent("output.txt")
+        try makePDF(at: inputURL, pageCount: 5)
+        let workerURL = try makeWorker(in: directory, body: """
+        printf 'chunk-%s' "$range" > "$output"
+        page=${range%-*}
+        end=${range#*-}
+        while [ "$page" -le "$end" ]; do
+            printf 'Completed page %s\\n' "$page"
+            page=$((page + 1))
+        done
+        """)
+        let progress = Locked<[SplitProcessOCRRunner.ProgressUpdate]>([])
+
+        try SplitProcessOCRRunner(executableURL: workerURL).run(
+            inputURL: inputURL,
+            output: .text(outputURL),
+            workerCount: 2,
+            languages: ["ko", "en"],
+            recognitionLevel: .fast,
+            renderScale: .balanced,
+            pageRange: 2...4
+        ) { update in
+            progress.withValue { $0.append(update) }
+        }
+
+        XCTAssertEqual(try String(contentsOf: outputURL), "chunk-2-3\nchunk-4-4")
+        XCTAssertEqual(Set(progress.value.map(\.totalPages)), [3])
+        try assertInvocations(in: directory, expectedRanges: ["2-3", "4-4"])
+        XCTAssertThrowsError(
+            try SplitProcessOCRRunner(executableURL: workerURL).run(
+                inputURL: inputURL,
+                output: .text(directory.appendingPathComponent("out-of-range.txt")),
+                workerCount: 2,
+                languages: ["ko", "en"],
+                recognitionLevel: .fast,
+                renderScale: .balanced,
+                pageRange: 4...6
+            )
+        )
+    }
+
     func testRunPassesConfiguredChildParallelismAndEnvironment() throws {
         let previousQueueCapacity = environmentValue("APPLE_VISION_OCR_QUEUE_CAPACITY")
         setenv("APPLE_VISION_OCR_QUEUE_CAPACITY", "7", 1)

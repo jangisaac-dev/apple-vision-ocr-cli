@@ -60,12 +60,18 @@ To install for the current macOS user:
 scripts/install-vocr-quick-action.sh
 ```
 
-This script:
-1. Calls `scripts/package-vocr-app.sh`.
-2. Copies `VOCR.app` to `~/Applications/VOCR.app` (overridable via `VOCR_APP_INSTALL_DIR`).
-3. Copies `apple-vision-ocr` to `~/.local/bin/apple-vision-ocr` (overridable via `VOCR_BIN_DIR`).
+This script has two source modes:
+- **Release package**: when `VOCR.app` sits next to the script (the unzipped package from `scripts/make-release-package.sh`), it installs that prebuilt app and the wrappers beside it. Nothing is built.
+- **Checkout**: otherwise it runs `scripts/package-vocr-app.sh` and installs `.workflow_build/VOCR.app` and `scripts/*.sh`.
+
+Then it:
+1. Copies the app to `VOCR.app.installing` next to the destination, removes the quarantine attribute, and only then replaces `~/Applications/VOCR.app` (overridable via `VOCR_APP_INSTALL_DIR`), so a failed copy keeps the old install.
+2. Copies the bundled CLI (`VOCR.app/Contents/MacOS/apple-vision-ocr`) to `~/.local/bin/apple-vision-ocr` (overridable via `VOCR_BIN_DIR`).
 4. Installs wrapper scripts `vocr-finder-action` and `apple-vision-ocr-finder-action` into `~/.local/bin/`. Only `vocr-finder-action` is used by the Quick Action; `apple-vision-ocr-finder-action` is a legacy alias that `exec`s `vocr-finder-action` from its own directory (falling back to `vocr-finder-action.sh` when run from `scripts/`).
-5. Creates Automator workflow `~/Library/Services/Apple Vision OCR.workflow` targeting `com.apple.finder` and `com.adobe.pdf`.
+3. Creates Automator workflow `~/Library/Services/Apple Vision OCR.workflow` targeting `com.apple.finder` and `com.adobe.pdf`. Its shell command sets `VOCR_APP` to the installed app path, so a custom `VOCR_APP_INSTALL_DIR` is what Finder launches. Paths are shell-quoted with zsh `${(q)…}` and then XML-escaped before being written into `document.wflow`.
+
+### Building the Release Package
+`scripts/make-release-package.sh` runs `scripts/package-vocr-app.sh`, then stages `VOCR.app`, `install-vocr-quick-action.sh`, both wrapper scripts, `LICENSE`, a generated `Install.command` (double-click installer) and `README.txt` (bilingual install/uninstall notes) into `.release/VOCR-<version>-macos-<arch>/`. It zips that folder with `ditto` and writes a `.sha256` file. The version comes from `CommandRunner.version`; the architecture comes from `lipo -archs` on the built app, so the name tracks what was actually built.
 
 ---
 
@@ -97,7 +103,7 @@ swift run apple-vision-ocr input.pdf --dry-run
 Finder Selection (1+ PDFs)
   └─> Right-Click > Quick Actions > "Apple Vision OCR"
         └─> ~/Library/Services/Apple Vision OCR.workflow
-              └─> document.wflow runs: exec "$FINDER_ACTION" "$@"
+              └─> document.wflow runs: VOCR_APP=<app dir>/VOCR.app exec <bin dir>/vocr-finder-action "$@"
                     └─> ~/.local/bin/vocr-finder-action (scripts/vocr-finder-action.sh)
                           └─> open -n "$APP" --args "$@"
                                 └─> ~/Applications/VOCR.app (VOCR binary)
@@ -321,6 +327,7 @@ open -n ~/Applications/VOCR.app --args Samples/sample.pdf Samples/sample.pdf
 | Output file names | `OutputPathResolver.swift`, `UniqueOutputPathResolver.swift` | `OCRJobController.availableURL(_:reservedPaths:)` (GUI batch reservation) |
 | Menu bar item | `Sources/VOCR/StatusItemController.swift` | |
 | Finder Quick Action / install paths | `scripts/install-vocr-quick-action.sh`, `scripts/vocr-finder-action.sh` | `README.md`, `docs/ai-install-and-setup.md` |
+| Version, release zip contents | `CommandRunner.version`, `scripts/package-vocr-app.sh` (plist), `scripts/make-release-package.sh` | `README.md` "Current release", release checklist in `docs/ai-install-and-setup.md` |
 
 #### Recipe 1: Add a New GUI Option End-to-End
 Example: a new checkbox whose value the OCR job needs.
@@ -370,7 +377,7 @@ All multi-process logic lives in `Sources/AppleVisionOCRCore/SplitProcessOCRRunn
 | :--- | :--- |
 | Worker count bounds | CLI: `parseSplitWorkers(_:)` in `CLIOptions.swift` (2–16). GUI: `OCRJobParallelism.minimumCount` / `maximumCount` (1–16) with the default `VOCRWindowController.defaultWorkerCount` (about 2/3 of active cores). |
 | When the GUI splits | `OCRJobController.run(...)`: `canUseSplitRunner = splitRunner != nil && workerCount > 1`, for TXT, PDF, or both. |
-| How pages are divided | `SplitProcessOCRRunner.planChunks(pageCount:workerCount:)` — contiguous ranges, remainder pages go to the first workers. |
+| How pages are divided | `SplitProcessOCRRunner.planChunks(pageCount:workerCount:)` — contiguous ranges, remainder pages go to the first workers. With `pageRange` (CLI `--page-range`), chunks are planned over the selected pages only and shifted to absolute page numbers; a range past the last page throws `invalidUsage`. |
 | What each child runs | `childArguments(...)` builds `apple-vision-ocr` arguments with `--page-range A-B` and a per-chunk output path. The parent's `--page-parallelism` is not forwarded; children use their default unless `APPLE_VISION_OCR_SPLIT_CHILD_PAGE_PARALLELISM` is set. |
 | Progress | `recordLine(_:workerIndex:isStderr:)` parses child output lines into progress updates. |
 | Pause / resume / cancel | `waitForWorkers(...)` sends `SIGSTOP` / `SIGCONT` for pause and resume; cancel and failure go through `terminateAndWait(for:)`. |

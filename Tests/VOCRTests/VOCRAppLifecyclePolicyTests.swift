@@ -71,6 +71,38 @@ final class VOCRAppLifecyclePolicyTests: XCTestCase {
     }
 
     @MainActor
+    func testFileListScrollsHorizontallyInsteadOfWrappingLongPaths() throws {
+        _ = NSApplication.shared
+        let longPath = "/tmp/" + String(repeating: "very-long-directory-name/", count: 12) + "input.pdf"
+        let files = (1...30).map { URL(fileURLWithPath: longPath + "-\($0)") }
+        let controller = VOCRWindowController(files: files)
+        let contentView = try XCTUnwrap(controller.window?.contentView)
+        contentView.layoutSubtreeIfNeeded()
+
+        let scrollView = try XCTUnwrap(Self.scrollView(containingText: "input.pdf-30", in: contentView))
+        let textView = try XCTUnwrap(scrollView.documentView as? NSTextView)
+        textView.layoutManager?.ensureLayout(for: try XCTUnwrap(textView.textContainer))
+        textView.sizeToFit()
+
+        XCTAssertTrue(scrollView.hasVerticalScroller)
+        XCTAssertTrue(scrollView.hasHorizontalScroller)
+        XCTAssertGreaterThan(textView.frame.width, scrollView.contentSize.width)
+        XCTAssertGreaterThan(textView.frame.height, scrollView.contentSize.height)
+        XCTAssertLessThanOrEqual(scrollView.frame.height, 80)
+    }
+
+    @MainActor
+    private static func scrollView(containingText text: String, in view: NSView) -> NSScrollView? {
+        if let scrollView = view as? NSScrollView,
+           let textView = scrollView.documentView as? NSTextView,
+           textView.string.contains(text) {
+            return scrollView
+        }
+
+        return view.subviews.lazy.compactMap { scrollView(containingText: text, in: $0) }.first
+    }
+
+    @MainActor
     private static func containsButton(titled title: String, in view: NSView) -> Bool {
         if let button = view as? NSButton, button.title == title {
             return true

@@ -7,10 +7,18 @@ macOS and does not upload your documents.
 ## What You Need
 
 - macOS 13 or later.
-- Xcode command line tools or Xcode.
 - A PDF file. Image-only scans are the main use case.
+- For the release package: an Apple Silicon Mac. Nothing else.
+- For building from source: Xcode command line tools or Xcode.
 
-Install the Xcode command line tools if `swift` is not available:
+To use the Finder Quick Action without building anything, download
+`VOCR-<version>-macos-arm64.zip` from the
+[GitHub Releases](https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases)
+page, unzip it, and double-click `Install.command`. If macOS blocks it, open
+System Settings > Privacy & Security and click "Open Anyway". The package's
+`README.txt` has a Terminal alternative and uninstall steps.
+
+To build from source, install the Xcode command line tools if `swift` is not available:
 
 ```bash
 xcode-select --install

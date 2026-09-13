@@ -6,7 +6,7 @@ Swift-only macOS OCR tool using Apple Vision. It includes:
 - `VOCR.app`: Finder-launched GUI with detail window and menu bar progress.
 - `Apple Vision OCR`: one Finder Quick Action for selected PDF files.
 
-Current release: `v1.0.0`.
+Current release: `v1.1.0`.
 
 ## Scope
 
@@ -19,7 +19,8 @@ Current release: `v1.0.0`.
 ## Requirements
 
 - macOS 13 or later.
-- Xcode command line tools or Xcode with Swift 5.9 or later.
+- Release package: an Apple Silicon (arm64) Mac. No build tools needed.
+- Building from source: Xcode command line tools or Xcode with Swift 5.9 or later.
 
 ## Documentation
 
@@ -29,6 +30,23 @@ Current release: `v1.0.0`.
 - Implementation status: `CURRENT_STATUS.md`
 
 ## Install
+
+### From a release package (no build)
+
+1. Download `VOCR-<version>-macos-arm64.zip` from [GitHub Releases](https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases) and unzip it.
+2. Double-click `Install.command`. If macOS blocks it, open System Settings > Privacy & Security, click "Open Anyway", and run it again (or use the Terminal commands below).
+3. In Finder, select PDFs, right-click, and choose Quick Actions > `Apple Vision OCR`.
+
+The package contains the prebuilt `VOCR.app` (with the bundled `apple-vision-ocr` CLI) and the same installer as the checkout; it installs to the paths listed below. The app is ad-hoc signed and not notarized, so the installer removes the quarantine attribute from the installed copy. Terminal alternative:
+
+```bash
+xattr -dr com.apple.quarantine VOCR-<version>-macos-arm64
+VOCR-<version>-macos-arm64/install-vocr-quick-action.sh
+```
+
+Maintainers build the package with `scripts/make-release-package.sh` (output: `.release/`).
+
+### From source
 
 Build and run from the checkout:
 
