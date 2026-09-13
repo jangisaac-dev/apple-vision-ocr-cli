@@ -64,7 +64,7 @@ This script:
 1. Calls `scripts/package-vocr-app.sh`.
 2. Copies `VOCR.app` to `~/Applications/VOCR.app` (overridable via `VOCR_APP_INSTALL_DIR`).
 3. Copies `apple-vision-ocr` to `~/.local/bin/apple-vision-ocr` (overridable via `VOCR_BIN_DIR`).
-4. Installs wrapper scripts `vocr-finder-action` and `apple-vision-ocr-finder-action` into `~/.local/bin/`. Only `vocr-finder-action` is used by the Quick Action; `apple-vision-ocr-finder-action` is a legacy alias that `exec`s `vocr-finder-action.sh` from its own directory.
+4. Installs wrapper scripts `vocr-finder-action` and `apple-vision-ocr-finder-action` into `~/.local/bin/`. Only `vocr-finder-action` is used by the Quick Action; `apple-vision-ocr-finder-action` is a legacy alias that `exec`s `vocr-finder-action` from its own directory (falling back to `vocr-finder-action.sh` when run from `scripts/`).
 5. Creates Automator workflow `~/Library/Services/Apple Vision OCR.workflow` targeting `com.apple.finder` and `com.adobe.pdf`.
 
 ---
