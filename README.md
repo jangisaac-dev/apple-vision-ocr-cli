@@ -76,7 +76,7 @@ swift run apple-vision-ocr input.pdf --recognition-level accurate
 swift run apple-vision-ocr input.pdf --recognition-level accurate --page-parallelism 8
 swift run apple-vision-ocr input.pdf --recognition-level accurate --page-parallelism 8 --render-scale 1.5
 swift run apple-vision-ocr input.pdf --txt-only --page-range 1-100
-swift run apple-vision-ocr input.pdf --txt-only --split-workers 4 --page-parallelism 4 --render-scale 2.0
+swift run apple-vision-ocr input.pdf --txt-only --split-workers 4 --render-scale 2.0
 swift run apple-vision-ocr english.pdf --lang en --recognition-level fast --page-parallelism 8
 swift run apple-vision-ocr input.pdf --dry-run
 swift run apple-vision-ocr --help
@@ -106,13 +106,13 @@ Speed controls:
 --recognition-level accurate|fast   accurate is the default; fast only supports a limited language set
 --page-parallelism 1-16             OCR up to N pages from the current PDF at once; default is 8
 --render-scale 1.25|1.5|2.0         2.0 quality, 1.5 balanced Korean speed, 1.25 compact
---page-range START-END              OCR over a 1-based page range (text-only or PDF-only output)
---split-workers 2-16                split OCR across child processes (text-only or searchable PDF), then join output in order
+--page-range START-END              OCR over a 1-based page range (TXT, PDF, or both)
+--split-workers 2-16                split OCR across child processes (TXT, searchable PDF, or both), then join output in order
 ```
 
 Apple Vision's `fast` recognition level does not support Korean (`ko-KR`) on this macOS version. Korean/default `ko,en` OCR should use `accurate` plus `--page-parallelism` and, when speed matters more than maximum scan fidelity, `--render-scale 1.5`.
 
-For large jobs where quality must stay on `accurate` + `--render-scale 2.0`, raise `--split-workers` toward the core-count sweet spot (~12 on an 18-core machine). An early `--split-workers 4` run on the 398-page reference PDF measured `66.43s` versus the `229.48s` single-process baseline, with byte-for-byte identical text output; more workers scale further. `--page-parallelism` has no effect under `--split-workers` (each worker is a single process over its own page range).
+For large jobs where quality must stay on `accurate` + `--render-scale 2.0`, raise `--split-workers` toward the core-count sweet spot (~12 on an 18-core machine). An early `--split-workers 4` run on the 398-page reference PDF measured `66.43s` versus the `229.48s` single-process baseline, with byte-for-byte identical text output; more workers scale further. The `--page-parallelism` value you pass is not forwarded to split workers: each worker runs with its own default (8), which still helps because it overlaps rendering with recognition inside that worker. Set `APPLE_VISION_OCR_SPLIT_CHILD_PAGE_PARALLELISM` to override it for benchmarking.
 
 In-process `--page-parallelism` does not raise throughput: Apple Vision serializes recognition within a single process, so it pins only ~1-2 cores regardless of the value. `--split-workers` is the real parallelism knob — it runs N independent processes and saturates the machine. It now applies to both text-only and searchable PDF output (PDF chunks are merged in page order with the searchable text layer preserved). On an 18-core machine, ~12 workers is the practical sweet spot.
 
@@ -134,7 +134,7 @@ Searchable PDF 생성          -> input_ocr.pdf
 
 You can select TXT, Searchable PDF, or both. `Page 구분자 넣기` is only available when `TXT 추출` is selected.
 
-The `동시 워커 프로세스 수` control defaults to an auto value based on CPU cores (about two-thirds of the active processors, capped at 16) and sets how many child OCR processes run in parallel. When it is 2 or more and a single output type (TXT-only or PDF-only) is selected, VOCR splits the document across that many `apple-vision-ocr` worker processes — Apple Vision serializes recognition within one process, so multi-process is what actually uses every core (about 6x faster on long PDFs). When set to 1, or when both TXT and PDF are selected, VOCR runs the in-process single-process path instead. The bundled CLI is found inside `VOCR.app` (or via `VOCR_CLI_PATH`); if it cannot be found, VOCR falls back to single-process and notes it in the log.
+The `동시 워커 프로세스 수` control defaults to an auto value based on CPU cores (about two-thirds of the active processors, capped at 16) and sets how many child OCR processes run in parallel. When it is 2 or more, VOCR splits the document across that many `apple-vision-ocr` worker processes for TXT, Searchable PDF, or both — Apple Vision serializes recognition within one process, so multi-process is what actually uses every core (about 6x faster on long PDFs). When set to 1, VOCR runs the in-process single-process path instead. The bundled CLI is found inside `VOCR.app` (or via `VOCR_CLI_PATH`); if it cannot be found, VOCR falls back to single-process and notes it in the log.
 
 The `인식 모드` control shows `정확도 우선` and `속도 우선 (영문 전용)`. `속도 우선` is blocked for the current Korean-default workflow because Apple Vision's fast text-recognition level does not support Korean.
 The `한국어 속도/품질` control keeps Korean OCR on `정확도 우선` and adjusts only the PDF render scale:

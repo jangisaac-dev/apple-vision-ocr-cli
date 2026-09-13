@@ -371,7 +371,7 @@ All multi-process logic lives in `Sources/AppleVisionOCRCore/SplitProcessOCRRunn
 | Worker count bounds | CLI: `parseSplitWorkers(_:)` in `CLIOptions.swift` (2–16). GUI: `OCRJobParallelism.minimumCount` / `maximumCount` (1–16) with the default `VOCRWindowController.defaultWorkerCount` (about 2/3 of active cores). |
 | When the GUI splits | `OCRJobController.run(...)`: `canUseSplitRunner = splitRunner != nil && workerCount > 1`, for TXT, PDF, or both. |
 | How pages are divided | `SplitProcessOCRRunner.planChunks(pageCount:workerCount:)` — contiguous ranges, remainder pages go to the first workers. |
-| What each child runs | `childArguments(...)` builds `apple-vision-ocr` arguments with `--page-range A-B` and a per-chunk output path. |
+| What each child runs | `childArguments(...)` builds `apple-vision-ocr` arguments with `--page-range A-B` and a per-chunk output path. The parent's `--page-parallelism` is not forwarded; children use their default unless `APPLE_VISION_OCR_SPLIT_CHILD_PAGE_PARALLELISM` is set. |
 | Progress | `recordLine(_:workerIndex:isStderr:)` parses child output lines into progress updates. |
 | Pause / resume / cancel | `waitForWorkers(...)` sends `SIGSTOP` / `SIGCONT` for pause and resume; cancel and failure go through `terminateAndWait(for:)`. |
 | Merge | `mergePDFs(...)` / `writeMergedPDF(_:to:)` copy pages in order with `CGContext.drawPDFPage`; `writeCombinedText(...)` joins text chunks. Both refuse to replace an existing output. |

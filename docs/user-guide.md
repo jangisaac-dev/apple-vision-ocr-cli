@@ -98,12 +98,11 @@ page order in the final output:
 swift run apple-vision-ocr large.pdf \
   --txt-only \
   --split-workers 12 \
-  --page-parallelism 4 \
   --render-scale 2.0
 ```
 
-`--split-workers` (2-16) now applies to both text-only and searchable PDF
-output. For PDF, each worker produces a partial searchable PDF over its page
+`--split-workers` (2-16) applies to text-only output, searchable PDF output, and
+both together (`--txt`), with or without `--page-breaks`. For PDF, each worker produces a partial searchable PDF over its page
 range and the parent merges them in page order, preserving the searchable text
 layer. Note: in-process `--page-parallelism` alone does not speed things up —
 Apple Vision serializes recognition within one process, so `--split-workers` is
