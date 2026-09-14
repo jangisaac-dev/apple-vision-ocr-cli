@@ -284,8 +284,9 @@ public final class SplitProcessOCRRunner {
                 let stdoutPipe = Pipe()
                 let stderrPipe = Pipe()
                 let process = Process()
-                process.executableURL = executableURL
-                process.arguments = childArguments(
+                // Keep heavy OCR split workers from starving network daemons.
+                process.executableURL = URL(fileURLWithPath: "/usr/sbin/taskpolicy")
+                process.arguments = ["-c", "utility", executableURL.path] + childArguments(
                     for: chunk,
                     inputURL: inputURL,
                     output: output,

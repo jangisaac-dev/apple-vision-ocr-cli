@@ -377,7 +377,7 @@ All multi-process logic lives in `Sources/AppleVisionOCRCore/SplitProcessOCRRunn
 
 | Concern | Code |
 | :--- | :--- |
-| Worker count bounds | CLI: `parseSplitWorkers(_:)` in `CLIOptions.swift` (2–16). GUI: `OCRJobParallelism.minimumCount` / `maximumCount` (1–16) with the default `VOCRWindowController.defaultWorkerCount` (about 2/3 of active cores). |
+| Worker count bounds | CLI: `parseSplitWorkers(_:)` in `CLIOptions.swift` (2–16). GUI: `OCRJobParallelism.minimumCount` / `maximumCount` (1–16) with the default `VOCRWindowController.defaultWorkerCount` (`OCRJobParallelism.recommendedWorkerCount()`: two-thirds of active cores minus 2, clamped to 2–16). |
 | When the GUI splits | `OCRJobController.run(...)`: `canUseSplitRunner = splitRunner != nil && workerCount > 1`, for TXT, PDF, or both. |
 | How pages are divided | `SplitProcessOCRRunner.planChunks(pageCount:workerCount:)` — contiguous ranges, remainder pages go to the first workers. With `pageRange` (CLI `--page-range`), chunks are planned over the selected pages only and shifted to absolute page numbers; a range past the last page throws `invalidUsage`. |
 | What each child runs | `childArguments(...)` builds `apple-vision-ocr` arguments with `--page-range A-B` and a per-chunk output path. The parent's `--page-parallelism` is not forwarded; children use their default unless `APPLE_VISION_OCR_SPLIT_CHILD_PAGE_PARALLELISM` is set. |
@@ -411,7 +411,7 @@ env SWIFTPM_HOME=.build/swiftpm-home \
 | `LanguageParserTests` | `LanguageParser.swift` | Comma-separated parsing, whitespace trimming, empty list rejection |
 | `OCRJobControlTests` | `OCRProgress.swift` (`OCRJobControl`) | Pause/resume/cancel flags; cancel unblocks a paused waiter |
 | `OCRJobOutputSelectionTests` | `OCRJobOptions.swift` | TXT / PDF / both selections; page breaks only as a TXT sub-option |
-| `OCRJobParallelismTests` | `OCRJobOptions.swift` | Default count from available cores; rejects zero and above the limit |
+| `OCRJobParallelismTests` | `OCRJobOptions.swift` | Default count, recommended worker count clamped to available headroom; rejects zero and above the limit |
 | `OCRParallelismLimiterTests` | `OCRParallelismLimiter.swift` | Raising and lowering the limit while slots are held |
 | `OCRProgressStateTests` | `OCRProgress.swift` | Percent from completed/total pages, zero-page case |
 | `OutputModeTests` | `OCRJobOptions.swift` | At least one output, page-break rules, PDF URL requirement, fast-mode language rejection |

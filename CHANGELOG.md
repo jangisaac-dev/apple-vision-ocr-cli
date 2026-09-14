@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Split OCR worker processes (`SplitProcessOCRRunner.swift`, used by both CLI `--split-workers` and the VOCR GUI) are now launched through `/usr/sbin/taskpolicy -c utility`, applying a utility QoS clamp on every thread of each worker so heavy OCR jobs yield CPU to network daemons (VPN/proxy) and foreground apps instead of starving them.
+- The VOCR GUI default worker count now uses `OCRJobParallelism.recommendedWorkerCount()` in `Sources/AppleVisionOCRCore/OCRJobOptions.swift`: two-thirds of active cores minus 2, clamped to 2...16 (10 on an 18-core Mac, 3 on an 8-core Mac; previously two-thirds of active cores, or 12 on 18 cores). `OCRJobParallelism.default` stays 8.
+
 ## [1.3.1] - 2026-09-14
 
 ### Fixed

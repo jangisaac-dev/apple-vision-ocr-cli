@@ -77,6 +77,12 @@ public struct OCRJobParallelism: Equatable {
     public static let serial = try! OCRJobParallelism(count: minimumCount)
     public static let `default` = try! OCRJobParallelism(count: 8)
 
+    public static func recommendedWorkerCount(
+        activeProcessorCount: Int = ProcessInfo.processInfo.activeProcessorCount
+    ) -> Int {
+        min(maximumCount, max(2, activeProcessorCount * 2 / 3 - 2))
+    }
+
     public let count: Int
 
     public init(count: Int) throws {

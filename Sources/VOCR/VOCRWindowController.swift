@@ -3,7 +3,7 @@ import AppleVisionOCRCore
 
 final class VOCRWindowController: NSWindowController, NSWindowDelegate {
     static var defaultWorkerCount: Int {
-        min(OCRJobParallelism.maximumCount, max(2, ProcessInfo.processInfo.activeProcessorCount * 2 / 3))
+        OCRJobParallelism.recommendedWorkerCount()
     }
 
     var onStart: (OCRJobOutputSelection, OCRJobParallelism, OCRRecognitionLevel, OCRRenderScale, Bool, Bool) -> Void = { _, _, _, _, _, _ in }
