@@ -135,8 +135,9 @@ Markdown은 모든 쪽을 레이아웃 모델로도 한 번 더 분석하므로 
   ```
 - 소스에서 개발하는 경우 다음 스크립트로 모델을 내려받아 컴파일할 수 있습니다:
   ```bash
-  scripts/fetch-layout-model.sh
+  eval "$(scripts/fetch-layout-model.sh)"
   ```
+  `eval` 명령은 현재 셸에 `APPLE_VISION_OCR_LAYOUT_MODEL`을 설정하여 `swift run`과 `.build/*/apple-vision-ocr`가 컴파일된 모델을 찾도록 합니다.
 
 ### 알려진 한계
 

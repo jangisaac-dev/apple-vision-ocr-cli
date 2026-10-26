@@ -35,7 +35,7 @@ public final class LayoutModel: LayoutAnalyzing {
         }
         do {
             let configuration = MLModelConfiguration()
-            // Vision OCR shares the Neural Engine: with 10 split workers, .all stalls ~10s on first layout prediction vs .cpuAndGPU ~0.2s; per-page cost is unchanged (measured 2026-10-27).
+            // Observed 2026-10-27 during a 10-worker OCR run: first prediction 10.0 s with .all vs 0.2 s with .cpuAndGPU, same per-page time.
             configuration.computeUnits = .cpuAndGPU
             return LayoutModel(model: try MLModel(contentsOf: url, configuration: configuration))
         } catch {

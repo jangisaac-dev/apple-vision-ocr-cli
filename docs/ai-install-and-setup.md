@@ -189,8 +189,10 @@ xcode-select -p
 Download and compile the layout model (required for tests or runs that execute real layout analysis):
 
 ```bash
-scripts/fetch-layout-model.sh
+eval "$(scripts/fetch-layout-model.sh)"
 ```
+
+The `eval` command sets `APPLE_VISION_OCR_LAYOUT_MODEL` in the current shell so `swift run` and `.build/*/apple-vision-ocr` can find the compiled model.
 
 Use project-local SwiftPM cache/module paths:
 

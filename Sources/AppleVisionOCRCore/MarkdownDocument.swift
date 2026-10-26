@@ -74,7 +74,9 @@ enum MarkdownDocumentRenderer {
                 }
             }
         }
-        var definitions: [(label: String, text: String)] = []
+        let numericMarkers = pages.flatMap(\.footnotes).compactMap { $0.marker.flatMap(Int.init) }
+        var nextNumericIndex = 0
+        var definitions: [(label: String, text: String, number: Int?)] = []
         var usedLabels: Set<String> = []
         var lastDefinitionByPage: [Int: Int] = [:]
         var renderedPages: [String] = []
@@ -111,13 +113,24 @@ enum MarkdownDocumentRenderer {
             }
             blocks.append(contentsOf: page.blocks)
 
+            var previousDefinition: Int?
             for (index, footnote) in page.footnotes.enumerated() {
                 let ordinal = index + 1
+                if footnote.marker.flatMap(Int.init) != nil { nextNumericIndex += 1 }
                 if footnote.marker == nil, index == 0,
                    let previous = lastDefinitionByPage[page.pdfPage - 1] {
                     definitions[previous].text += "\n" + footnote.text
                     lastDefinitionByPage[page.pdfPage] = previous
+                    previousDefinition = previous
                     continue
+                }
+                if footnote.marker == nil, let previous = previousDefinition,
+                   let number = definitions[previous].number {
+                    let next = nextNumericIndex < numericMarkers.count ? numericMarkers[nextNumericIndex] : nil
+                    if next.map({ $0 > number && $0 - 1 == number }) ?? true {
+                        definitions[previous].text += "\n" + footnote.text
+                        continue
+                    }
                 }
 
                 let label: String
@@ -140,7 +153,8 @@ enum MarkdownDocumentRenderer {
                 }
                 usedLabels.insert(label)
                 lastDefinitionByPage[page.pdfPage] = definitions.count
-                definitions.append((label, footnote.text))
+                previousDefinition = definitions.count
+                definitions.append((label, footnote.text, numeric ? footnote.marker.flatMap(Int.init) : nil))
                 if !numeric || !replaceReference(number: footnote.marker!, label: label, blocks: &blocks) {
                     marker += " [^\(label)]"
                 }

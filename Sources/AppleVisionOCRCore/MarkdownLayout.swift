@@ -172,7 +172,9 @@ enum MarkdownPageAnalyzer {
             appendInsertions(after: index)
         }
         let footnotes: [MarkdownPage.Footnote] = footnoteIndices.sorted {
-            regions[$0].rect.minY == regions[$1].rect.minY ? $0 < $1 : regions[$0].rect.minY < regions[$1].rect.minY
+            let a = assigned[$0].first?.rect.minY ?? regions[$0].rect.minY
+            let b = assigned[$1].first?.rect.minY ?? regions[$1].rect.minY
+            return a == b ? $0 < $1 : a < b
         }.flatMap { index -> [MarkdownPage.Footnote] in
             var groups: [[LayoutLine]] = []
             for line in assigned[index] {

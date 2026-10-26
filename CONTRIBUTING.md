@@ -12,14 +12,16 @@ Thanks for helping improve Apple Vision OCR CLI / VOCR.
 
 Requirements: macOS 26 or later (Apple Silicon), Xcode command line tools (Swift 5.9 or later). Users on macOS 13–25 should continue using [v1.3.1](https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/tag/v1.3.1).
 
-Run `scripts/fetch-layout-model.sh` before running tests or commands that need the real layout model (unit tests use mocks and do not require it):
+Run `eval "$(scripts/fetch-layout-model.sh)"` before running tests or commands that need the real layout model (unit tests use mocks and do not require it):
 
 ```bash
-scripts/fetch-layout-model.sh
+eval "$(scripts/fetch-layout-model.sh)"
 env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift build
 env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift test
 scripts/package-vocr-app.sh
 ```
+
+The `eval` command sets `APPLE_VISION_OCR_LAYOUT_MODEL` in the current shell so `swift run` and `.build/*/apple-vision-ocr` can find the compiled model.
 
 To try the Finder Quick Action from your checkout, run `scripts/install-vocr-quick-action.sh`.
 

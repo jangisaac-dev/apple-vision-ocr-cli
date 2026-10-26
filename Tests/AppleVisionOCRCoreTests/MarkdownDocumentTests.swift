@@ -61,21 +61,61 @@ final class MarkdownDocumentTests: XCTestCase {
         let text = MarkdownDocumentRenderer.render(pages: [
             page(1, notes: [.init(marker: "1", text: "첫 각주"), .init(marker: "2", text: "계속될 각주")]),
             page(2, notes: [.init(marker: nil, text: "1998, pp. 20–21.")]),
-            page(3, notes: [.init(marker: nil, text: "다음 이어짐"), .init(marker: nil, text: "별개 각주")])
+            page(3, notes: [.init(marker: nil, text: "다음 이어짐"), .init(marker: nil, text: "마지막 이어짐")])
         ])
         XCTAssertTrue(text.contains("[^2]: 계속될 각주\n    1998, pp. 20–21.\n    다음 이어짐"))
-        XCTAssertTrue(text.contains("[^p3-u2]: 별개 각주"))
+        XCTAssertTrue(text.contains("    다음 이어짐\n    마지막 이어짐"))
+        XCTAssertFalse(text.contains("[^p3-u2]"))
         XCTAssertFalse(text.contains("[^p2-u1]"))
         assertDefinitionsReferencedOnce(text)
+    }
+
+    func testSamePageUnmarkedFragmentsContinueSequentialNumericDefinitions() {
+        let fixtures = [
+            (37, "66", "66) 경향신문 인터넷 기사", "(http://news.khan.co.kr/kh_news/art_print.html?artid=201010192149145)", 38, "67"),
+            (53, "118", "118) H. J. C. Pieterse, 『청중과 소통하는 설교』 정창균역 (수원: 합신대학원 출판부, 2002),", "51.", 55, "119"),
+            (83, "196", "196) Ronald J. Allen, 『34가지 방법으로 설교에 도전하라J , 337-344. 본서에는 각 설교 신학적", "으로 대표적인 설교자와 설교문이 소개되어 있다. 브라이언 채플의 설교 전문을 싣는다.", 84, "197")
+        ]
+        for (number, marker, marked, fragment, nextPage, nextMarker) in fixtures {
+            let body = String(marked.dropFirst(marker.count + 2))
+            let text = MarkdownDocumentRenderer.render(pages: [
+                page(number, notes: [.init(marker: marker, text: body), .init(marker: nil, text: fragment)]),
+                page(nextPage, notes: [.init(marker: nextMarker, text: "다음 각주")])
+            ])
+            XCTAssertTrue(text.contains("[^\(marker)]: \(body)\n    \(fragment)"), marked)
+            XCTAssertFalse(text.contains("-u"), marked)
+            assertDefinitionsReferencedOnce(text)
+        }
+    }
+
+    func testSamePageUnmarkedFragmentsKeepNumericMarkerWithoutFollowingNumber() {
+        let text = MarkdownDocumentRenderer.render(pages: [page(1, notes: [
+            .init(marker: "5", text: "첫 줄"), .init(marker: nil, text: "둘째 줄"), .init(marker: nil, text: "셋째 줄")
+        ])])
+        XCTAssertTrue(text.contains("[^5]: 첫 줄\n    둘째 줄\n    셋째 줄"))
+        XCTAssertFalse(text.contains("-u"))
+        assertDefinitionsReferencedOnce(text)
+    }
+
+    func testSamePageUnmarkedFragmentsStaySeparateAfterGapOrNonnumericDefinition() {
+        for marker in ["5", "*", nil] {
+            let text = MarkdownDocumentRenderer.render(pages: [page(1, notes: [
+                .init(marker: marker, text: "첫 줄"), .init(marker: nil, text: "별개 각주"),
+                .init(marker: "7", text: "다음 각주")
+            ])])
+            XCTAssertTrue(text.contains("[^p1-u2]: 별개 각주"))
+            assertDefinitionsReferencedOnce(text)
+        }
     }
 
     func testUnmarkedFootnotesDoNotCrossMissingOrFootnoteFreePages() {
         for middle in [[], [page(2)]] {
             let text = MarkdownDocumentRenderer.render(pages:
                 [page(1, notes: [.init(marker: "1", text: "첫째")])] + middle
-                + [page(3, notes: [.init(marker: nil, text: "별개")])]
+                + [page(3, notes: [.init(marker: nil, text: "별개"), .init(marker: nil, text: "또 별개")])]
             )
             XCTAssertTrue(text.contains("[^p3-u1]: 별개"))
+            XCTAssertTrue(text.contains("[^p3-u2]: 또 별개"))
             assertDefinitionsReferencedOnce(text)
         }
         let first = MarkdownDocumentRenderer.render(pages: [page(1, notes: [.init(marker: nil, text: "처음")])])

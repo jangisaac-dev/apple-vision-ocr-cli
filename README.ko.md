@@ -243,11 +243,13 @@ docs/benchmarks/2026-05-29-vision-pipeline-render-ahead.md
 ## 개발
 
 ```bash
-scripts/fetch-layout-model.sh
+eval "$(scripts/fetch-layout-model.sh)"
 env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift build
 env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift test
 scripts/package-vocr-app.sh
 ```
+
+`eval` 명령은 현재 셸에 `APPLE_VISION_OCR_LAYOUT_MODEL`을 설정하여 `swift run`과 `.build/*/apple-vision-ocr`가 컴파일된 모델을 찾도록 합니다.
 
 ## 사용자 데이터
 

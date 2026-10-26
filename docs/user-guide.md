@@ -142,8 +142,9 @@ Layout analysis uses the CoreML `PP-DocLayoutV3` model (~90 MB, Apache-2.0, see 
   ```
 - Developers building from source can download and compile the model by running:
   ```bash
-  scripts/fetch-layout-model.sh
+  eval "$(scripts/fetch-layout-model.sh)"
   ```
+  The `eval` command sets `APPLE_VISION_OCR_LAYOUT_MODEL` in the current shell so `swift run` and `.build/*/apple-vision-ocr` can find the compiled model.
 
 ### Known Limitations
 

@@ -28,6 +28,21 @@ final class MarkdownLayoutTests: XCTestCase {
         XCTAssertEqual(analyze([], chain).blocks.map(\.text), ["third\nsecond\nfirst"])
     }
 
+    func testFootnoteRegionsFollowFirstAssignedLineBeforeRegionPosition() {
+        let result = analyze([
+            region("footnote", 0.1, 0.865, 0.35, 0.13),
+            region("footnote", 0.55, 0.865, 0.35, 0.13)
+        ], [line("second region last line", 0.6, 0.94), line("first region", 0.15, 0.88),
+            line("second region first line", 0.6, 0.91)])
+        XCTAssertEqual(result.footnotes.map(\.text), ["first region", "second region first line\nsecond region last line"])
+
+        let reversed = analyze([
+            region("footnote", 0.1, 0.865, 0.35, 0.13),
+            region("footnote", 0.55, 0.865, 0.35, 0.13)
+        ], [line("first region", 0.15, 0.91), line("second region", 0.6, 0.88)])
+        XCTAssertEqual(reversed.footnotes.map(\.text), ["second region", "first region"])
+    }
+
     func testFootnoteRegionSplitsContinuationAndSequentialMarkersOnly() {
         let result = analyze([region("footnote")], [
             line("2017), 63.", 0.2, 0.33), line("30) Krs Fiuser, ...", 0.2, 0.29),

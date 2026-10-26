@@ -243,11 +243,13 @@ docs/benchmarks/2026-05-29-vision-pipeline-render-ahead.md
 ## Development
 
 ```bash
-scripts/fetch-layout-model.sh
+eval "$(scripts/fetch-layout-model.sh)"
 env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift build
 env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift test
 scripts/package-vocr-app.sh
 ```
+
+The `eval` command sets `APPLE_VISION_OCR_LAYOUT_MODEL` in the current shell so `swift run` and `.build/*/apple-vision-ocr` can find the compiled model.
 
 ## User Data
 
