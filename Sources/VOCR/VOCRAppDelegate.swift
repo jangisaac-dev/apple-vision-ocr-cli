@@ -112,7 +112,7 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
 
     // Test seam: VOCR_HEADLESS triggers an automatic run. "1"/"pdf" → searchable PDF;
     // "txt-pagebreaks" → page-divided TXT (split page-break path); "md" → Markdown only;
-    // "cancel" → cancel mid-run; "pause" → pause then resume mid-run.
+    // "cancel"/"md-cancel" → cancel mid-run; "pause"/"md-pause" → pause then resume mid-run.
     private static var headlessMode: String? {
         guard let value = ProcessInfo.processInfo.environment["VOCR_HEADLESS"], !value.isEmpty else {
             return nil
@@ -124,7 +124,7 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
         do {
             let mode = Self.headlessMode ?? "1"
             let wantsTextPageBreaks = mode == "txt-pagebreaks"
-            let wantsMarkdown = mode == "md"
+            let wantsMarkdown = mode == "md" || mode.hasPrefix("md-")
             let selection = try OCRJobOutputSelection(
                 writesText: wantsTextPageBreaks,
                 writesPDF: !wantsTextPageBreaks && !wantsMarkdown,
@@ -139,7 +139,7 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
                 renderScale: .quality,
                 usesLanguageCorrection: true
             )
-            switch mode {
+            switch mode.hasPrefix("md-") ? String(mode.dropFirst(3)) : mode {
             case "cancel":
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                     Self.headlessLog("cancel requested")

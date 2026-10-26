@@ -266,6 +266,42 @@ final class VOCRAppLifecyclePolicyTests: XCTestCase {
     }
 
     @MainActor
+    func testMarkdownCheckboxUpdatesOutputControlsAndFitsInWindow() {
+        for language in [VOCRLanguage.english, .korean] {
+            Self.withLanguage(language) {
+                _ = NSApplication.shared
+                let controller = VOCRWindowController(files: [URL(fileURLWithPath: "/tmp/paper.pdf")])
+                guard let contentView = controller.window?.contentView else {
+                    XCTFail("Missing content view for \(language)")
+                    return
+                }
+                contentView.layoutSubtreeIfNeeded()
+                guard let markdown = Self.button(titled: VOCRStrings.checkboxMarkdownLayout.text, in: contentView),
+                      let text = Self.button(titled: VOCRStrings.checkboxExtractText.text, in: contentView),
+                      let pageBreak = Self.button(titled: VOCRStrings.checkboxInsertPageSeparators.text, in: contentView),
+                      let pdf = Self.button(titled: VOCRStrings.checkboxGenerateSearchablePDF.text, in: contentView) else {
+                    XCTFail("Missing output controls for \(language)")
+                    return
+                }
+                markdown.performClick(nil)
+
+                for checkbox in [text, pageBreak, pdf] {
+                    XCTAssertEqual(checkbox.state, .off)
+                    XCTAssertFalse(checkbox.isEnabled)
+                }
+                XCTAssertTrue(Self.containsText("input.md", in: contentView), "Missing input.md output preview for \(language)")
+                XCTAssertTrue(contentView.bounds.contains(markdown.convert(markdown.bounds, to: contentView)))
+
+                markdown.performClick(nil)
+
+                XCTAssertTrue(text.isEnabled)
+                XCTAssertTrue(pdf.isEnabled)
+                XCTAssertEqual(pdf.state, .on)
+            }
+        }
+    }
+
+    @MainActor
     private static func scrollView(containingText text: String, in view: NSView) -> NSScrollView? {
         if let scrollView = view as? NSScrollView,
            let textView = scrollView.documentView as? NSTextView,
@@ -282,6 +318,15 @@ final class VOCRAppLifecyclePolicyTests: XCTestCase {
         VOCRStrings.language = language
         defer { VOCRStrings.language = previousLanguage }
         body()
+    }
+
+    @MainActor
+    private static func button(titled title: String, in view: NSView) -> NSButton? {
+        if let button = view as? NSButton, button.title == title {
+            return button
+        }
+
+        return view.subviews.lazy.compactMap { button(titled: title, in: $0) }.first
     }
 
     @MainActor
