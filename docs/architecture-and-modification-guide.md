@@ -12,9 +12,9 @@ This guide is for developers and coding agents maintaining or modifying `apple-v
 
 ### Core Architectural Principles
 - **Dual Execution Model**:
-  - **In-Process Pipeline (`SearchablePDFPipeline`)**: A single process renders pages and runs Vision recognition sequentially/concurrently via a bounded producer-consumer queue (`BoundedRenderedPageQueue`).
-  - **Multi-Process Split Pipeline (`SplitProcessOCRRunner`)**: When `--split-workers N` is passed (CLI) or the worker count is 2 or more (GUI), a parent process splits document page ranges across multiple independent child `apple-vision-ocr` processes, streaming progress lines from child `stderr` (the CLI parent reports them as `Progress: N/M pages`), and merging partial outputs using CoreGraphics (`CGContext.drawPDFPage`) for PDF or text concatenation for TXT.
-- **Originals Are Never Modified**: Default outputs are `<name>_ocr.pdf` and `<name>.txt` next to the input. The CLI refuses to overwrite an existing output (`AppleVisionOCRError.outputAlreadyExists`); the GUI instead picks a numbered sibling name such as `<name>_ocr(1).pdf`.
+  - **In-Process Pipeline (`SearchablePDFPipeline`)**: A single process renders pages and runs Vision recognition sequentially/concurrently via a bounded producer-consumer queue (`BoundedRenderedPageQueue`). For layout-aware Markdown, page OCR is followed by PP-DocLayoutV3 layout region detection, page analysis (`MarkdownPageAnalyzer`) with empty-region re-crop OCR and Vision table recognition, assembling into `MarkdownPage` structs, rendered finally by `MarkdownDocumentRenderer`.
+  - **Multi-Process Split Pipeline (`SplitProcessOCRRunner`)**: When `--split-workers N` is passed (CLI) or the worker count is 2 or more (GUI), a parent process splits document page ranges across multiple independent child `apple-vision-ocr` processes, streaming progress lines from child `stderr` (the CLI parent reports them as `Progress: N/M pages`), and merging partial outputs using CoreGraphics (`CGContext.drawPDFPage`) for PDF, text concatenation for TXT, or child `MarkdownPage` JSON chunks (via internal `--md-pages-output`) rendered once by the parent for Markdown.
+- **Originals Are Never Modified**: Default outputs are `<name>_ocr.pdf`, `<name>.txt`, or `<name>.md` next to the input. The CLI refuses to overwrite an existing output (`AppleVisionOCRError.outputAlreadyExists`); the GUI instead picks a numbered sibling name such as `<name>_ocr(1).pdf` or `<name>(1).md`.
 - **Accurate vs. Fast Recognition**: Apple Vision's `fast` recognition level does not support Korean (`ko-KR`). The codebase defaults to `accurate` and rejects `fast` when Korean is requested.
 - **Multi-Process Scaling**: In macOS, Apple Vision serializes recognition within a single process. Scaling OCR throughput across multiple CPU cores requires multi-process execution (`--split-workers`).
 
@@ -23,7 +23,7 @@ This guide is for developers and coding agents maintaining or modifying `apple-v
 ## 2. Setup
 
 ### Requirements
-- macOS 13.0 or later.
+- macOS 26.0 or later (Apple Silicon). Users on macOS 13–25 should continue using [v1.3.1](https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/tag/v1.3.1).
 - Swift 5.9 or later toolchain (`swift --version`).
 - Xcode Command Line Tools (`xcode-select -p`).
 
@@ -88,6 +88,15 @@ swift run apple-vision-ocr input.pdf --txt-only
 # Searchable PDF and plain text with page separator markers
 swift run apple-vision-ocr input.pdf --txt --page-breaks
 
+# Layout-aware Markdown output (writes input.md)
+swift run apple-vision-ocr input.pdf --md-only
+
+# Layout-aware Markdown with custom output path
+swift run apple-vision-ocr input.pdf --md-output custom.md
+
+# Multi-process split OCR for Markdown (4 worker processes)
+swift run apple-vision-ocr input.pdf --md-only --split-workers 4
+
 # Multi-process split OCR (4 worker processes, 1.5x render scale, accurate)
 swift run apple-vision-ocr input.pdf --split-workers 4 --render-scale 1.5
 
@@ -131,21 +140,25 @@ Log locations:
 ### Source Responsibilities
 
 #### `Sources/AppleVisionOCRCore/`
+- `AtomicOutputWriter.swift`: Atomically writes file data via a temporary file and moves to destination, refusing to overwrite existing files.
 - `CLIOptions.swift`: Parses and validates command-line arguments, flag compatibility, and file-system preconditions.
 - `Errors.swift`: Defines domain errors (`AppleVisionOCRError`) and numeric process exit codes (`ExitCode`).
 - `GeometryMapper.swift`: Maps normalized Vision bounding boxes (`0.0...1.0`) into PDF page display rectangles with rotation handling.
 - `LanguageParser.swift`: Splits and validates comma-separated language identifiers.
+- `LayoutModel.swift`: Manages locating and running inference on the CoreML PP-DocLayoutV3 model (`[1, 3, 800, 800]` -> logits, boxes, order); also contains `DocumentTableRecognizer` which invokes `RecognizeDocumentsRequest` (macOS 26+) for table extraction.
+- `MarkdownDocument.swift`: Defines `MarkdownPage` structure, `MarkdownTable` renderer, and `MarkdownDocumentRenderer` for heading assembly, footnote label deduplication, inline footnote reference replacement (`n)` -> `[^n]`), and definition aggregation after `<!-- footnotes -->`.
+- `MarkdownLayout.swift`: `LayoutDecoder` (reading order votes and confidence thresholding), `MarkdownPageAnalyzer` (assigns OCR lines to layout regions, detects printed page numbers, extracts footnotes and converts bottom text to footnotes, handles unassigned lines, re-crops and re-OCRs empty content regions).
 - `OCRJobOptions.swift`: Defines configuration structures for jobs, output selections, output modes, and parallelism limits.
 - `OCRParallelismLimiter.swift`: Manages thread-safe task acquisition and concurrency limits using `NSCondition`.
 - `OCRProgress.swift`: Provides progress tracking types (`OCRProgressEvent`, `OCRProgressStage`) and cancellation/pause control (`OCRJobControl`).
 - `OCRRecognitionLevel.swift`: Defines recognition accuracy modes (`fast`, `accurate`) and maps them to `VNRequestTextRecognitionLevel`.
 - `OCRRenderScale.swift`: Defines bitmap rasterization scales (`compact`: 1.25x, `balanced`: 1.5x, `quality`: 2.0x).
-- `OutputPathResolver.swift`: Computes default output file URLs for searchable PDF (`_ocr.pdf`) and text (`.txt`).
+- `OutputPathResolver.swift`: Computes default output file URLs for searchable PDF (`_ocr.pdf`), text (`.txt`), and Markdown (`.md`).
 - `PDFRenderer.swift`: Draws a `CGPDFPage` into a `CGImage` bitmap at the selected `OCRRenderScale`.
 - `PDFTextOverlayWriter.swift`: Draws background pages and overlays invisible CoreText glyphs to assemble searchable PDFs.
 - `PDFTextPresenceDetector.swift`: Uses PDFKit to detect existing selectable text layers in input documents.
 - `SearchablePDFPipeline.swift`: Orchestrates single-process OCR using a bounded render-ahead queue to decouple rendering from recognition.
-- `SplitProcessOCRRunner.swift`: Manages child worker processes across page chunks, streams progress, handles pause/cancel, and merges outputs.
+- `SplitProcessOCRRunner.swift`: Manages child worker processes across page chunks, streams progress, handles pause/cancel, and merges outputs (PDF merge, text concatenation, or combined Markdown document rendering from child `MarkdownPage` JSON).
 - `TextOutputWriter.swift`: Writes recognized text to disk with optional `===== Page N =====` separators.
 - `UniqueOutputPathResolver.swift`: Generates non-colliding output paths by incrementing numeric suffixes (`(1)`, `(2)`).
 - `VisionLanguageResolver.swift`: Resolves language aliases (`ko` -> `ko-KR`) and queries Vision for supported languages.
@@ -180,11 +193,14 @@ flowchart TD
         CLIParse -->|"--split-workers N"| SplitDecision{"Output mode"}
         SplitDecision -->|"PDF + TXT"| SplitBoth["SplitProcessOCRRunner<br>(.searchablePDFAndText)"]
         SplitDecision -->|"PDF only"| ChunkedPDF["ChunkedPDFOCRRunner<br>→ SplitProcessOCRRunner"]
+        SplitDecision -->|"Markdown"| SplitMD["SplitProcessOCRRunner<br>(.markdown / --md-pages-output)"]
         SplitDecision -->|"TXT only"| ChunkedText["ChunkedTextOCRRunner<br>→ SplitProcessOCRRunner"]
         CLIParse -->|"single process"| Pipeline["SearchablePDFPipeline.run()"]
         Pipeline --> BoundedQueue["BoundedRenderedPageQueue<br>(render-ahead)"]
         BoundedQueue --> VisionRec["VisionTextRecognizer"]
-        VisionRec --> OverlayWriter["PDFTextOverlayWriter / TextOutputWriter"]
+        VisionRec --> ModeSwitch{"Output mode"}
+        ModeSwitch -->|"PDF / TXT"| OverlayWriter["PDFTextOverlayWriter / TextOutputWriter"]
+        ModeSwitch -->|"Markdown"| MDAnalyzer["LayoutModel + MarkdownPageAnalyzer<br>→ MarkdownDocumentRenderer"]
     end
 
     subgraph GUI_Flow["GUI Runtime Flow (VOCR.app)"]
@@ -424,6 +440,10 @@ env SWIFTPM_HOME=.build/swiftpm-home \
 | `TextOutputWriterTests` | `TextOutputWriter.swift` | Per-page text and `===== Page N =====` markers |
 | `UniqueOutputPathResolverTests` | `UniqueOutputPathResolver.swift` | Default name when free, `(1)` suffix for PDF and TXT when taken |
 | `VisionLanguageResolverTests` | `VisionLanguageResolver.swift` | Short aliases to Vision identifiers; fast mode rejects Korean and accepts English |
+| `LayoutModelTests` | `LayoutModel.swift` | Locate model, load MLModel, input tensor construction and RGB normalization |
+| `MarkdownLayoutTests` | `MarkdownLayout.swift` | Region order voting, line assignment, bounding box padding, logo removal, empty region recrop, footnote detection |
+| `MarkdownDocumentTests` | `MarkdownDocument.swift` | Table formatting, running header candidate handling, footnote labeling and deduplication, inline `n)` reference substitution, footer definition generation |
+| `SearchablePDFPipelineMarkdownTests` | `SearchablePDFPipeline.swift` | Single-process layout Markdown pipeline execution, `--md-only` output writing |
 | `CommandRunnerTests` | `CommandRunner.swift` | `--help` (including the output contract and exit codes) and `--version`; one `Progress: N/M pages` line per completed page in a split run |
 | `VOCRAppLifecyclePolicyTests` | `VOCRAppLifecyclePolicy.swift`, `VOCRWindowController.swift` | Auto-quit after terminal states; option window contains the quit button, English-only speed warning, Korean speed preset, language-correction checkbox, worker-process label |
 
@@ -436,6 +456,8 @@ Environment variables read by the code, for automation, debugging, and benchmark
 | `VOCR_HEADLESS` | `VOCRAppDelegate.swift` | `1` or `pdf`: Automatically starts a searchable PDF job on launch.<br>`txt-pagebreaks`: Automatically starts a page-divided text job.<br>`cancel`: Starts a job and requests cancellation after 1.5s.<br>`pause`: Starts a job, pauses at 1.5s, resumes at 4.0s. |
 | `VOCR_CLI_PATH` | `OCRJobController.swift` | Explicit file path to `apple-vision-ocr` binary for the GUI to invoke child split processes. |
 | `APPLE_VISION_OCR_PARENT_PID` | `AppleVisionOCRCLI/main.swift` | Set by `SplitProcessOCRRunner` for each child. The child checks `getppid()` against it every second and exits when the parent is gone. |
+| `APPLE_VISION_OCR_LAYOUT_MODEL` | `LayoutModel.swift` | Explicit file path to `PPDocLayoutV3.mlmodelc` to override default bundle location `../Resources/PPDocLayoutV3.mlmodelc`. |
+| `APPLE_VISION_OCR_MODEL_DIR` | `scripts/fetch-layout-model.sh` | Output directory for downloading and compiling `PPDocLayoutV3.mlmodelc` (default `.build/models`). |
 | `APPLE_VISION_OCR_SPLIT_CHILD_PAGE_PARALLELISM` | `SplitProcessOCRRunner.swift` | When set, appended as `--page-parallelism <value>` to every child command. |
 | `APPLE_VISION_OCR_SPLIT_TIMING` | `SplitProcessOCRRunner.swift` | When non-empty, logs per-worker start and finish timestamps to stderr. |
 | `APPLE_VISION_OCR_DEBUG_PIPELINE` | `SearchablePDFPipeline.swift` | When `1`, prints the maximum number of concurrent Vision requests observed. |

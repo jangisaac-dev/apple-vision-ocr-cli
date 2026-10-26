@@ -1,13 +1,14 @@
 # AGENTS.md
 
 ## Repository Overview
-Apple Vision OCR CLI (`apple-vision-ocr`) and companion menu bar app (`VOCR.app`) for macOS (Apple Silicon). It provides fast, accurate OCR for PDFs producing searchable PDFs, plain text, or both using the Apple Vision framework.
+Apple Vision OCR CLI (`apple-vision-ocr`) and companion menu bar app (`VOCR.app`) for macOS (Apple Silicon). It provides fast, accurate OCR for PDFs producing searchable PDFs, plain text, both, or layout-aware Markdown using the Apple Vision framework and PP-DocLayoutV3.
 
 ## Installation and CLI Usage
 See [docs/ai-install-and-setup.md](docs/ai-install-and-setup.md) for complete agent instructions, copy-paste install commands, background execution patterns, exit codes, and speed tuning.
 
 ## Development Commands
 ```bash
+scripts/fetch-layout-model.sh
 env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift build
 env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift test
 scripts/package-vocr-app.sh

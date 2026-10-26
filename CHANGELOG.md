@@ -5,8 +5,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Layout-aware Markdown output: CLI flags `--md-only` (writes `<input>.md`) and `--md-output PATH` (writes Markdown to PATH). Exclusive with PDF and TXT options (`--output`, `--txt`, `--txt-only`, `--txt-output`, `--page-breaks`). Structures paper titles as `# `, section headings as `## `, page markers (`[p. 713]` or `[PDF p. 5]`), body paragraphs (preserving OCR line breaks, `#` escaped as `\#`), tables as Markdown tables (via Apple Vision's `RecognizeDocumentsRequest`), and footnotes (`[^4]` references in the body and definitions collected at document end after `<!-- footnotes -->`). Automatically removes running headers, footers, page numbers, and logos (e.g. KCI watermarks), and recovers text from empty regions via re-crop OCR.
+- Multi-process split worker support for Markdown (`--split-workers N`), where child worker processes write intermediate `MarkdownPage` JSON structures via internal `--md-pages-output` and the parent process renders the final Markdown document once.
+- VOCR GUI output checkbox "Markdown (layout)" / "Markdown (레이아웃 구분)"; selecting it turns off and disables the TXT, page separator, and Searchable PDF options.
+- `scripts/fetch-layout-model.sh` script to download pinned PP-DocLayoutV3 CoreML model files, verify SHA-256 checksums, and compile `PPDocLayoutV3.mlmodelc` into `.build/models/`.
+
 ### Changed
 
+- Minimum system requirement raised to macOS 26 or later on Apple Silicon. Users on macOS 13–25 should continue using [v1.3.1](https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/tag/v1.3.1). The installer stops on older macOS versions before making changes.
+- CLI installation (`scripts/install-vocr-quick-action.sh`) creates `~/.local/bin/apple-vision-ocr` as a symlink into `VOCR.app` so the CLI can locate the bundled layout model at `../Resources/PPDocLayoutV3.mlmodelc`. Copying only the CLI binary elsewhere loses the model unless overridden via `APPLE_VISION_OCR_LAYOUT_MODEL`.
+- Exit code 4 now indicates "Vision failure or layout model unavailable".
+- Bundled layout model notice: PP-DocLayoutV3 layout model (CoreML, ~90 MB, Apache-2.0, see `THIRD_PARTY_NOTICES.md`) bundled in `VOCR.app/Contents/Resources/PPDocLayoutV3.mlmodelc`.
 - Split OCR worker processes (`SplitProcessOCRRunner.swift`, used by both CLI `--split-workers` and the VOCR GUI) are now launched through `/usr/sbin/taskpolicy -c utility`, applying a utility QoS clamp on every thread of each worker so heavy OCR jobs yield CPU to network daemons (VPN/proxy) and foreground apps instead of starving them.
 - The VOCR GUI default worker count now uses `OCRJobParallelism.recommendedWorkerCount()` in `Sources/AppleVisionOCRCore/OCRJobOptions.swift`: two-thirds of active cores minus 2, clamped to 2...16 (10 on an 18-core Mac, 3 on an 8-core Mac; previously two-thirds of active cores, or 12 on 18 cores). `OCRJobParallelism.default` stays 8.
 

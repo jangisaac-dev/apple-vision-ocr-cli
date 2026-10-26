@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/jangisaac-dev/apple-vision-ocr-cli/actions/workflows/ci.yml"><img src="https://github.com/jangisaac-dev/apple-vision-ocr-cli/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/latest"><img src="https://img.shields.io/github/v/release/jangisaac-dev/apple-vision-ocr-cli" alt="Release"></a>
-  <img src="https://img.shields.io/badge/macOS-13%2B-black?logo=apple" alt="macOS 13+">
+  <img src="https://img.shields.io/badge/macOS-26%2B-black?logo=apple" alt="macOS 26+">
   <img src="https://img.shields.io/badge/Swift-5.9%2B-F05138?logo=swift&logoColor=white" alt="Swift 5.9+">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/jangisaac-dev/apple-vision-ocr-cli" alt="License: MIT"></a>
 </p>
@@ -25,14 +25,15 @@ Current release: `v1.3.1`.
 ## Scope
 
 - Input: PDF files. The CLI takes one PDF per run; VOCR and the Quick Action accept several selected PDFs.
-- Output: searchable PDF, TXT, or both.
+- Output: searchable PDF, TXT, both, or layout-aware Markdown.
 - OCR engine: Apple Vision text recognition.
 - Default languages: Korean and English, configurable with `--lang`.
 - Original PDFs are never modified.
 
 ## Requirements
 
-- macOS 13 or later.
+- macOS 26 or later (Apple Silicon).
+- Users on macOS 13–25 should continue using [v1.3.1](https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/tag/v1.3.1).
 - Release package: an Apple Silicon (arm64) Mac. No build tools needed.
 - Building from source: Xcode command line tools or Xcode with Swift 5.9 or later.
 
@@ -54,7 +55,7 @@ Current release: `v1.3.1`.
 2. Double-click `Install.command`. If macOS blocks it, open System Settings > Privacy & Security, click "Open Anyway", and run it again (or use the Terminal commands below).
 3. In Finder, select PDFs, right-click, and choose Quick Actions > `Apple Vision OCR`.
 
-The package contains the prebuilt `VOCR.app` (with the bundled `apple-vision-ocr` CLI) and the same installer as the checkout; it installs to the paths listed below. The app is ad-hoc signed and not notarized, so the installer removes the quarantine attribute from the installed copy. Terminal alternative:
+The package contains the prebuilt `VOCR.app` (with the bundled `apple-vision-ocr` CLI and `PPDocLayoutV3.mlmodelc` layout model) and the same installer as the checkout; it installs to the paths listed below. The installer creates `~/.local/bin/apple-vision-ocr` as a symlink into the app so it locates the bundled layout model; copying only the CLI binary elsewhere loses the model unless overridden via `APPLE_VISION_OCR_LAYOUT_MODEL`. On macOS versions prior to 26, the installer exits before making any changes. The app is ad-hoc signed and not notarized, so the installer removes the quarantine attribute from the installed copy. Terminal alternative:
 
 ```bash
 xattr -dr com.apple.quarantine VOCR-<version>-macos-arm64
@@ -106,6 +107,9 @@ swift run apple-vision-ocr input.pdf --txt
 swift run apple-vision-ocr input.pdf --txt-only
 swift run apple-vision-ocr input.pdf --txt-output custom.txt --page-breaks
 swift run apple-vision-ocr input.pdf --txt-only --txt-output custom.txt --page-breaks
+swift run apple-vision-ocr input.pdf --md-only
+swift run apple-vision-ocr input.pdf --md-output custom.md
+swift run apple-vision-ocr input.pdf --md-only --split-workers 4
 swift run apple-vision-ocr input.pdf --lang ko,en
 swift run apple-vision-ocr input.pdf --recognition-level accurate
 swift run apple-vision-ocr input.pdf --recognition-level accurate --page-parallelism 8
@@ -135,6 +139,15 @@ Optional text output:
 --page-breaks         adds ===== Page N ===== separators to TXT output
 ```
 
+Layout-aware Markdown output:
+
+```text
+--md-only             writes only layout-aware Markdown to input.md
+--md-output PATH      writes only layout-aware Markdown to PATH
+```
+
+Markdown output is mutually exclusive with `--output`, `--txt`, `--txt-only`, `--txt-output`, and `--page-breaks` (exits with code 1). It can be freely combined with `--split-workers`, `--page-range`, `--lang`, `--recognition-level`, `--render-scale`, `--no-language-correction`, and `--dry-run`.
+
 Speed controls:
 
 ```text
@@ -159,15 +172,16 @@ Finder shows one Quick Action:
 Apple Vision OCR
 ```
 
-Selecting it opens `VOCR.app`. The GUI follows the macOS language (English by default, Korean when the system language is Korean). The detail window has independent output checkboxes:
+Selecting it opens `VOCR.app`. The GUI follows the macOS language (English by default, Korean when the system language is Korean). The detail window has output checkboxes:
 
 ```text
+Markdown (layout)           -> input.md
 Extract TXT                 -> input.txt
   Insert page separators     -> adds ===== Page N ===== headings to TXT
 Generate Searchable PDF      -> input_ocr.pdf
 ```
 
-You can select TXT, Searchable PDF, or both. `Insert page separators` is only available when `Extract TXT` is selected.
+You can select TXT, Searchable PDF, or both, or select `Markdown (layout)`. Selecting `Markdown (layout)` turns off and disables the TXT, page separator, and PDF options (unchecking it restores them). `Insert page separators` is only available when `Extract TXT` is selected.
 
 The `Worker process count` control defaults to an auto value based on CPU cores (two-thirds of active cores minus 2, clamped to 2–16; e.g. 10 on an 18-core Mac, 3 on an 8-core Mac) and sets how many child OCR processes run in parallel. Split workers run at utility QoS (`taskpolicy -c utility`) so heavy OCR jobs yield CPU to network daemons and foreground apps. When it is 2 or more, VOCR splits the document across that many `apple-vision-ocr` worker processes for TXT, Searchable PDF, or both — Apple Vision serializes recognition within one process, so multi-process is what actually uses every core (about 6x faster on long PDFs). When set to 1, VOCR runs the in-process single-process path instead. The bundled CLI is found inside `VOCR.app` (or via `VOCR_CLI_PATH`); if it cannot be found, VOCR falls back to single-process and notes it in the log.
 
@@ -187,6 +201,7 @@ The GUI uses safe sibling names if output already exists:
 ```text
 input_ocr.pdf, input_ocr(1).pdf
 input.txt, input(1).txt
+input.md, input(1).md
 ```
 
 During OCR, the menu bar item shows progress like:
@@ -228,6 +243,7 @@ docs/benchmarks/2026-05-29-vision-pipeline-render-ahead.md
 ## Development
 
 ```bash
+scripts/fetch-layout-model.sh
 env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift build
 env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift test
 scripts/package-vocr-app.sh

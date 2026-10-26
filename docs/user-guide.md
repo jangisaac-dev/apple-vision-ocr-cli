@@ -8,10 +8,11 @@ macOS and does not upload your documents.
 
 ## What You Need
 
-- macOS 13 or later.
+- macOS 26 or later (Apple Silicon).
+- Users on macOS 13–25 should continue using [v1.3.1](https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/tag/v1.3.1).
 - A PDF file. Image-only scans are the main use case.
 - For the release package: an Apple Silicon Mac. Nothing else.
-- For building from source: Xcode command line tools or Xcode.
+- For building from source: Xcode command line tools or Xcode with Swift 5.9 or later.
 
 To use the Finder Quick Action without building anything, download
 `VOCR-<version>-macos-arm64.zip` from the
@@ -71,6 +72,84 @@ swift run apple-vision-ocr path/to/input.pdf \
   --txt-only \
   --txt-output output.txt
 ```
+
+## Markdown Output
+
+Layout-aware Markdown output formats OCR text into structured Markdown, separating document titles, section headings, body paragraphs, tables, and footnotes without mixing them together.
+
+### What It Contains
+
+- **Title**: Document/paper title formatted as `# Title`.
+- **Headings**: Section headings formatted as `## Heading`. All section levels are rendered as `##`.
+- **Page Markers**: One marker line per page: `[p. 713]` with the printed page number when recognized, otherwise `[PDF p. 5]`.
+- **Paragraphs**: Body paragraphs with OCR-preserved line breaks. Any line starting with `#` is escaped as `\#`.
+- **Tables**: Page tables recognized using Apple Vision document analysis (`RecognizeDocumentsRequest`) and converted to Markdown tables.
+- **Footnotes**: Footnote references like `[^4]` linked inline in body text (or placed on the page marker line `[p. 713] [^4]` if the reference mark cannot be found in the body). All footnote definitions are collected at the end of the document after a `<!-- footnotes -->` separator.
+- **Header/Footer/Logo Removal**: Running headers, running footers, printed page numbers, and margin watermarks/logos (e.g. KCI logos) are automatically excluded.
+- **Empty-Region Re-OCR**: Empty layout regions (such as footnotes obscured under logos) are re-cropped and re-OCR'd.
+
+Example output:
+
+```markdown
+[p. 713]
+
+은 기계적 반응이라고 폄하하였다. ... 동물 학대를 금지했고,[^4] ...
+
+## 2. 피터 싱어(Peter Singer)의 동물윤리
+
+피터 싱어(Peter Singer)는 ...
+
+<!-- footnotes -->
+
+[^4]: John Stuart Mill, On Liberty and the Subjection of Women, ...
+```
+
+### CLI Usage
+
+Write Markdown to the default destination (`<input>.md`):
+
+```bash
+swift run apple-vision-ocr path/to/input.pdf --md-only
+```
+
+Specify a custom Markdown output path:
+
+```bash
+swift run apple-vision-ocr path/to/input.pdf --md-output output.md
+```
+
+Combine with multi-process split workers:
+
+```bash
+swift run apple-vision-ocr path/to/input.pdf --md-only --split-workers 4
+```
+
+Markdown output is mutually exclusive with `--output`, `--txt`, `--txt-only`, `--txt-output`, and `--page-breaks` (exits with code 1). It works seamlessly with `--split-workers`, `--page-range`, `--lang`, `--recognition-level`, `--render-scale`, `--no-language-correction`, and `--dry-run`.
+
+### GUI Usage
+
+In `VOCR.app`, select the **Markdown (layout)** / **Markdown (레이아웃 구분)** checkbox. Enabling Markdown automatically unchecks and disables the TXT, page separator, and Searchable PDF options.
+
+### Layout Model Requirements
+
+Layout analysis uses the CoreML `PP-DocLayoutV3` model (~90 MB, Apache-2.0, see `THIRD_PARTY_NOTICES.md`).
+- In the packaged app, the compiled model is located at `VOCR.app/Contents/Resources/PPDocLayoutV3.mlmodelc`.
+- The installed CLI at `~/.local/bin/apple-vision-ocr` is a symlink into `VOCR.app` so it automatically finds the model. If you copy only the CLI executable elsewhere, it cannot locate the model unless you set the environment variable:
+  ```bash
+  export APPLE_VISION_OCR_LAYOUT_MODEL=/path/to/PPDocLayoutV3.mlmodelc
+  ```
+- Developers building from source can download and compile the model by running:
+  ```bash
+  scripts/fetch-layout-model.sh
+  ```
+
+### Known Limitations
+
+- **Magazine-style multi-column layouts**: Multi-column pages where figures or tables span across columns may result in incorrect block reading order.
+- **Footnote reference linking**: Only numeric references in the `n)` format are replaced inline within paragraph text. Unmatched, symbolic, or unnumbered footnotes are attached to the page marker line (e.g., `[p. 713] [^9]`).
+- **Numbered lists at page bottom**: A numbered list at the very bottom of a page can occasionally be classified as footnotes.
+- **Recovered logo text**: Text recovered from under a logo via re-crop OCR may contain recognition errors.
+- **Uniform heading levels**: Heading levels are not distinguished by depth; all section headings are formatted as `##`.
 
 ## Korean And English OCR
 
@@ -154,6 +233,7 @@ Apple Vision OCR
 The GUI follows the macOS language (English by default, Korean when the system language is Korean). The app lets you choose:
 
 ```text
+Markdown (layout)
 Extract TXT
 Generate Searchable PDF
 Insert page separators
@@ -210,5 +290,9 @@ that the workflow exists:
 ls "$HOME/Library/Services/Apple Vision OCR.workflow"
 ```
 
-If OCR output already exists, choose a different `--output` or `--txt-output`
+If running on macOS versions prior to macOS 26, use [v1.3.1](https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/tag/v1.3.1).
+
+If Markdown OCR fails with exit code 4 (`layout model not found`), compile the model by running `scripts/fetch-layout-model.sh` or set `APPLE_VISION_OCR_LAYOUT_MODEL` to the path of `PPDocLayoutV3.mlmodelc`. Note that the CLI binary must be run through its installed symlink into `VOCR.app` or have `APPLE_VISION_OCR_LAYOUT_MODEL` set.
+
+If OCR output already exists, choose a different `--output`, `--txt-output`, or `--md-output`
 path. The CLI refuses to overwrite existing files.

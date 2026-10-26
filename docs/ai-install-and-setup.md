@@ -36,11 +36,15 @@ Run `VOCR-1.3.1-macos-arm64/VOCR.app/Contents/MacOS/apple-vision-ocr` by absolut
 
 | Install Path | Requirements | What Gets Written | When To Use |
 | :--- | :--- | :--- | :--- |
-| **Prebuilt Install** | macOS 13+, Apple Silicon (arm64) | `~/Applications/VOCR.app`<br>`~/.local/bin/apple-vision-ocr`<br>`~/.local/bin/vocr-finder-action`<br>`~/.local/bin/apple-vision-ocr-finder-action`<br>`~/Library/Services/Apple Vision OCR.workflow` | Standard agent setup where persistent CLI access and Finder Quick Action are desired. |
-| **Portable (No Install)** | macOS 13+, Apple Silicon (arm64) | Nothing outside the unzipped directory (writes nothing to `~/Library` or `~/.local/bin`) | Ephemeral agents, throwaway containers, CI workers, or when avoiding system changes. |
-| **From Source** | macOS 13+, Xcode CLI tools / Xcode, Swift 5.9+ | `.build/` (and optionally user install paths if installer is run) | Modifying CLI/app code, custom local builds, or contributing. |
+| **Prebuilt Install** | macOS 26+, Apple Silicon (arm64) | `~/Applications/VOCR.app`<br>`~/.local/bin/apple-vision-ocr` (symlink to app)<br>`~/.local/bin/vocr-finder-action`<br>`~/.local/bin/apple-vision-ocr-finder-action`<br>`~/Library/Services/Apple Vision OCR.workflow` | Standard agent setup where persistent CLI access and Finder Quick Action are desired. |
+| **Portable (No Install)** | macOS 26+, Apple Silicon (arm64) | Nothing outside the unzipped directory (writes nothing to `~/Library` or `~/.local/bin`) | Ephemeral agents, throwaway containers, CI workers, or when avoiding system changes. |
+| **From Source** | macOS 26+, Xcode CLI tools / Xcode, Swift 5.9+ | `.build/` (and optionally user install paths if installer is run) | Modifying CLI/app code, custom local builds, or contributing. |
 
-> **Note:** Installer destination paths can be customized via environment variables:
+> **Note:** macOS 26 or later on Apple Silicon is required. Users on macOS 13–25 should continue using [v1.3.1](https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/tag/v1.3.1). The installer checks `sw_vers` and stops on older macOS versions before changing anything.
+>
+> **Symlink note:** The installer creates `~/.local/bin/apple-vision-ocr` as a symlink pointing into `VOCR.app/Contents/MacOS/apple-vision-ocr` so the CLI can locate the bundled layout model at `../Resources/PPDocLayoutV3.mlmodelc`. Copying only the CLI binary elsewhere loses access to the model unless overridden via `export APPLE_VISION_OCR_LAYOUT_MODEL=/path/to/PPDocLayoutV3.mlmodelc`.
+>
+> Installer destination paths can be customized via environment variables:
 > `VOCR_APP_INSTALL_DIR="$HOME/Applications" VOCR_BIN_DIR="$HOME/.local/bin" VOCR-1.3.1-macos-arm64/install-vocr-quick-action.sh`
 > Because `~/.local/bin` may not be in default `PATH`, invoke the CLI using its absolute path `"$HOME/.local/bin/apple-vision-ocr"`.
 
@@ -69,10 +73,10 @@ rm -rf "$HOME/Applications/VOCR.app" \
 - **Output & Overwrite Rule**:
   - Existing output files are never overwritten.
   - If the target output path exists, the command terminates immediately with exit code `5` and prints `error: output already exists: <path>`.
-  - Always provide a fresh destination via `--output <path>` or `--txt-output <path>`.
+  - Always provide a fresh destination via `--output <path>`, `--txt-output <path>`, or `--md-output <path>`.
 - **stdout**:
   - Emits only the written output file paths, one per line.
-  - Searchable PDF path is printed first, followed by the TXT path (if text output was requested).
+  - Searchable PDF path is printed first, followed by TXT path, or Markdown path.
 - **stderr**:
   - Human-readable status messages and logs.
   - Machine-parseable progress updates after each completed page: `Progress: <completed>/<total> pages` (emitted across all execution modes, including `--split-workers`). Counts only increase; when pages finish together a count can be skipped, but a successful run always ends with `Progress: <total>/<total> pages`.
@@ -81,15 +85,15 @@ rm -rf "$HOME/Applications/VOCR.app" \
   | Exit Code | Name | Description |
   | :--- | :--- | :--- |
   | `0` | Success | OCR completed successfully. |
-  | `1` | Invalid usage | Invalid arguments, multiple input files, or unsupported flags. |
+  | `1` | Invalid usage | Invalid arguments, multiple input files, or unsupported flags (e.g. combining `--md-only` with `--output` or `--txt`). |
   | `2` | Input file problem | Input file missing or not readable. |
   | `3` | PDF/OCR failure | Input is not a valid PDF (`error: failed to open input PDF`), page rendering or output writing failed, or another unexpected error. |
-  | `4` | Vision failure | Apple Vision framework error during text recognition. |
+  | `4` | Vision failure or layout model unavailable | Apple Vision framework error during text recognition, or layout model missing/failed to load. |
   | `5` | Output already exists | Destination file already exists (overwrite refused). |
   | `130` | Canceled by SIGINT | Interrupted by SIGINT (Ctrl-C). |
   | `143` | Canceled by SIGTERM | Terminated by `kill -TERM <pid>`. Temporary files cleaned up, no partial output left. Repeated signals are ignored while cleanup runs; `kill -KILL` forces an exit but skips cleanup. A signal that arrives after the outputs were written does not change the result: the run exits `0`. |
 - **`--dry-run` Limits**:
-  - `--dry-run` validates arguments, checks input file existence, checks output path collisions, and prints planned output paths without running OCR.
+  - `--dry-run` validates arguments, checks input file existence, checks output path collisions, verifies layout model availability when Markdown output is requested, and prints planned output paths without running OCR.
   - It does not open or parse the PDF (a non-PDF file still passes with exit `0` and fails later with exit `3`), does not perform text recognition, and does not prove Apple Vision works in the current environment (e.g. inside sandboxes).
 
 ## Background And Long Jobs
@@ -134,6 +138,8 @@ Tune throughput and accuracy according to document characteristics:
 
 | Option / Flag | Recommended Setting | Description |
 | :--- | :--- | :--- |
+| `--md-only` | As needed | Write layout-aware Markdown to `<input>.md`. Exclusive with PDF and TXT options. |
+| `--md-output <path>` | As needed | Write layout-aware Markdown to explicit path. Exclusive with PDF and TXT options. |
 | `--recognition-level` | `accurate` (default) | Required for Korean and default `ko,en`. `fast` only supports English. |
 | `--split-workers` | `2-16` (~2/3 of CPU cores minus 2; ~10 on 18-core Mac) | Multi-process parallelism across pages for large PDFs. In-process `--page-parallelism` does not add throughput due to Vision framework serialization. |
 | `--no-language-correction` | Included on clean scans | ~2.5x faster processing with near-identical accuracy on clean scans. |
@@ -160,12 +166,13 @@ enough. Do not commit `.build/`, `.workflow_build/`, `.omx/`, `.env*`, logs, or
 ## Requirements
 
 ### Prebuilt Package
-- macOS 13 or later.
+- macOS 26 or later.
 - Apple Silicon (arm64) Mac.
 - Xcode is not needed for the prebuilt package.
+- Users on macOS 13–25 should continue using [v1.3.1](https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/tag/v1.3.1).
 
 ### Building From Source
-- macOS 13 or later.
+- macOS 26 or later.
 - Xcode command line tools or Xcode.
 - Swift 5.9 or later.
 - Apple Vision framework availability on the host Mac.
@@ -178,6 +185,12 @@ xcode-select -p
 ```
 
 ## Build And Test
+
+Download and compile the layout model (required for tests or runs that execute real layout analysis):
+
+```bash
+scripts/fetch-layout-model.sh
+```
 
 Use project-local SwiftPM cache/module paths:
 

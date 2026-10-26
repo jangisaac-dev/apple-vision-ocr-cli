@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/jangisaac-dev/apple-vision-ocr-cli/actions/workflows/ci.yml"><img src="https://github.com/jangisaac-dev/apple-vision-ocr-cli/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/latest"><img src="https://img.shields.io/github/v/release/jangisaac-dev/apple-vision-ocr-cli" alt="Release"></a>
-  <img src="https://img.shields.io/badge/macOS-13%2B-black?logo=apple" alt="macOS 13+">
+  <img src="https://img.shields.io/badge/macOS-26%2B-black?logo=apple" alt="macOS 26+">
   <img src="https://img.shields.io/badge/Swift-5.9%2B-F05138?logo=swift&logoColor=white" alt="Swift 5.9+">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/jangisaac-dev/apple-vision-ocr-cli" alt="License: MIT"></a>
 </p>
@@ -25,14 +25,15 @@ Apple Vision을 사용하는 순수 Swift 기반 macOS OCR 도구입니다. 다�
 ## 지원 범위
 
 - 입력: PDF 파일. CLI는 한 번 실행할 때 PDF 한 개를 처리하고, VOCR과 Quick Action은 여러 PDF를 한꺼번에 선택할 수 있습니다.
-- 출력: Searchable PDF, TXT 또는 둘 다.
+- 출력: Searchable PDF, TXT, 둘 다, 또는 레이아웃 구분 Markdown.
 - OCR 엔진: Apple Vision 텍스트 인식.
 - 기본 언어: 한국어 및 영어(`--lang`으로 설정 가능).
 - 원본 PDF는 절대로 수정되지 않습니다.
 
 ## 요구 사양
 
-- macOS 13 이상.
+- macOS 26 이상 (Apple Silicon).
+- macOS 13~25 사용자는 [v1.3.1](https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/tag/v1.3.1)을 계속 사용해야 합니다.
 - 릴리스 패키지: Apple Silicon(arm64) Mac. 별도의 빌드 도구가 필요하지 않습니다.
 - 소스에서 빌드: Xcode 명령줄 도구(Command Line Tools) 또는 Swift 5.9 이상이 포함된 Xcode.
 
@@ -54,7 +55,7 @@ Apple Vision을 사용하는 순수 Swift 기반 macOS OCR 도구입니다. 다�
 2. `Install.command`를 이중 클릭합니다. macOS에서 실행이 차단되는 경우, 시스템 설정 > 개인정보 보호 및 보안을 열고 "그래도 열기"(Open Anyway)를 클릭한 후 다시 실행합니다(또는 아래의 터미널 명령을 사용합니다).
 3. Finder에서 PDF를 선택하고 마우스 우클릭한 뒤 Quick Actions > `Apple Vision OCR`을 선택합니다.
 
-해당 패키지에는 사전 빌드된 `VOCR.app`(`apple-vision-ocr` CLI 번들 포함)과 소스 체크아웃과 동일한 설치 프로그램이 포함되어 있으며, 아래에 나열된 경로로 설치됩니다. 앱은 임시 서명(ad-hoc signed)되어 있고 공증(notarized)을 받지 않았으므로, 설치 프로그램이 설치된 복사본에서 격리(quarantine) 속성을 제거합니다. 터미널을 사용하는 대안은 다음과 같습니다:
+해당 패키지에는 사전 빌드된 `VOCR.app`(`apple-vision-ocr` CLI 번들 및 `PPDocLayoutV3.mlmodelc` 레이아웃 모델 포함)과 소스 체크아웃과 동일한 설치 프로그램이 포함되어 있으며, 아래에 나열된 경로로 설치됩니다. 설치 프로그램은 CLI가 번들된 레이아웃 모델을 찾을 수 있도록 `~/.local/bin/apple-vision-ocr`를 앱 내부를 가리키는 심볼릭 링크로 만듭니다. `APPLE_VISION_OCR_LAYOUT_MODEL`을 지정하지 않고 CLI 바이너리만 다른 위치로 복사하면 모델을 찾을 수 없습니다. macOS 26 미만 버전에서는 설치 프로그램이 변경 사항 없이 바로 종료됩니다. 앱은 임시 서명(ad-hoc signed)되어 있고 공증(notarized)을 받지 않았으므로, 설치 프로그램이 설치된 복사본에서 격리(quarantine) 속성을 제거합니다. 터미널을 사용하는 대안은 다음과 같습니다:
 
 ```bash
 xattr -dr com.apple.quarantine VOCR-<version>-macos-arm64
@@ -106,6 +107,9 @@ swift run apple-vision-ocr input.pdf --txt
 swift run apple-vision-ocr input.pdf --txt-only
 swift run apple-vision-ocr input.pdf --txt-output custom.txt --page-breaks
 swift run apple-vision-ocr input.pdf --txt-only --txt-output custom.txt --page-breaks
+swift run apple-vision-ocr input.pdf --md-only
+swift run apple-vision-ocr input.pdf --md-output custom.md
+swift run apple-vision-ocr input.pdf --md-only --split-workers 4
 swift run apple-vision-ocr input.pdf --lang ko,en
 swift run apple-vision-ocr input.pdf --recognition-level accurate
 swift run apple-vision-ocr input.pdf --recognition-level accurate --page-parallelism 8
@@ -135,6 +139,15 @@ CLI는 기존 출력 파일을 덮어쓰지 않습니다.
 --page-breaks         adds ===== Page N ===== separators to TXT output
 ```
 
+레이아웃 구분 Markdown 출력:
+
+```text
+--md-only             writes only layout-aware Markdown to input.md
+--md-output PATH      writes only layout-aware Markdown to PATH
+```
+
+Markdown 출력 옵션은 `--output`, `--txt`, `--txt-only`, `--txt-output`, `--page-breaks`와 동시에 사용할 수 없습니다(종료 코드 1). `--split-workers`, `--page-range`, `--lang`, `--recognition-level`, `--render-scale`, `--no-language-correction`, `--dry-run`과는 문제없이 함께 사용할 수 있습니다.
+
 속도 제어 옵션:
 
 ```text
@@ -159,15 +172,16 @@ Finder에는 단일 Quick Action이 표시됩니다:
 Apple Vision OCR
 ```
 
-이를 선택하면 `VOCR.app`이 열립니다. GUI는 macOS 언어를 따릅니다: 기본은 영어, 시스템 언어가 한국어면 한국어. 상세 창에는 각각 독립적으로 설정할 수 있는 출력 체크박스가 있습니다:
+이를 선택하면 `VOCR.app`이 열립니다. GUI는 macOS 언어를 따릅니다: 기본은 영어, 시스템 언어가 한국어면 한국어. 상세 창에는 다음과 같은 출력 체크박스가 있습니다:
 
 ```text
+Markdown (레이아웃 구분)    -> input.md
 TXT 추출                    -> input.txt
   Page 구분자 넣기           -> adds ===== Page N ===== headings to TXT
 Searchable PDF 생성          -> input_ocr.pdf
 ```
 
-TXT, Searchable PDF 또는 둘 다 선택할 수 있습니다. `Page 구분자 넣기`는 `TXT 추출`이 선택되었을 때만 사용할 수 있습니다.
+TXT, Searchable PDF 또는 둘 다 선택할 수 있으며, `Markdown (레이아웃 구분)`을 선택할 수도 있습니다. `Markdown (레이아웃 구분)`을 켜면 TXT, Page 구분자, Searchable PDF 체크박스가 꺼지고 비활성화됩니다(체크를 해제하면 다시 활성화됩니다). `Page 구분자 넣기`는 `TXT 추출`이 선택되었을 때만 사용할 수 있습니다.
 
 `동시 워커 프로세스 수` 컨트롤은 CPU 코어 수를 기반으로 한 자동값(활성 프로세서의 약 2/3, 최대 16개로 제한)을 기본값으로 하며, 병렬로 실행할 하위 OCR 프로세스 수를 설정합니다. 이 값이 2 이상이면 VOCR은 TXT, Searchable PDF 또는 둘 다에 대해 해당 개수만큼의 `apple-vision-ocr` 워커 프로세스로 문서를 분할하여 처리합니다. Apple Vision은 단일 프로세스 내에서 인식을 직렬화하므로, 모든 코어를 실제로 활용하려면 멀티 프로세스가 필수적입니다(긴 PDF에서 약 6배 빠름). 1로 설정하면 VOCR은 분할하지 않고 단일 프로세스로 실행합니다. 번들된 CLI는 `VOCR.app` 내부(또는 `VOCR_CLI_PATH`를 통해)에서 찾으며, 찾을 수 없는 경우 VOCR은 단일 프로세스로 폴백하고 로그에 기록합니다.
 
@@ -187,6 +201,7 @@ GUI는 출력 파일이 이미 존재하는 경우 같은 폴더에 겹치지 �
 ```text
 input_ocr.pdf, input_ocr(1).pdf
 input.txt, input(1).txt
+input.md, input(1).md
 ```
 
 OCR이 실행되는 동안 메뉴 막대 항목에는 다음과 같은 진행률이 표시됩니다:
@@ -228,6 +243,7 @@ docs/benchmarks/2026-05-29-vision-pipeline-render-ahead.md
 ## 개발
 
 ```bash
+scripts/fetch-layout-model.sh
 env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift build
 env SWIFTPM_HOME=.build/swiftpm-home CLANG_MODULE_CACHE_PATH=.build/module-cache swift test
 scripts/package-vocr-app.sh
