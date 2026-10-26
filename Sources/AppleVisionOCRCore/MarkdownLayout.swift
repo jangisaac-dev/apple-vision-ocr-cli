@@ -52,6 +52,7 @@ enum LayoutDecoder {
 
 enum MarkdownPageAnalyzer {
     private static let discarded: Set<String> = ["header", "footer", "header_image", "footer_image", "seal"]
+    private static let multilevelSectionPattern = "^[0-9]+(\\.[0-9]+)+\\.\\s+\\S"
 
     static func analyze(pdfPage: Int, regions: [LayoutRegion], lines: [LayoutLine],
                         recognizeCrop: (CGRect) throws -> [LayoutLine],
@@ -136,7 +137,10 @@ enum MarkdownPageAnalyzer {
             topLines.append(assigned[topRegion][0])
         }
         let topCandidates: [MarkdownPage.Block] = readingOrder(topLines).map { line in
-            let heading = topRegion.map { regions[$0].label == "paragraph_title" && assigned[$0][0] == line } ?? false
+            let heading = topRegion.map {
+                assigned[$0][0] == line && (regions[$0].label == "paragraph_title"
+                    || (regions[$0].label == "text" && isTextSectionHeading(assigned[$0])))
+            } ?? false
             return .init(kind: heading ? headingKind(line.text) : .paragraph, text: line.text)
         }
         var blocks: [MarkdownPage.Block] = []
@@ -160,7 +164,7 @@ enum MarkdownPageAnalyzer {
                 kind = region.label == "doc_title" ? .title : headingKind(text)
             } else {
                 text = paragraph(assigned[index])
-                kind = .paragraph
+                kind = region.label == "text" && isTextSectionHeading(assigned[index]) ? .heading : .paragraph
             }
             if !text.isEmpty {
                 blocks.append(.init(kind: kind, text: text))
@@ -193,8 +197,16 @@ enum MarkdownPageAnalyzer {
     }
 
     private static func headingKind(_ text: String) -> MarkdownPage.Block.Kind {
-        text.trimmingCharacters(in: .whitespacesAndNewlines)
-            .range(of: "다\\.\\s*(\\(?[0-9]{1,3}\\))?$", options: .regularExpression) == nil ? .heading : .paragraph
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.range(of: multilevelSectionPattern, options: .regularExpression) != nil
+            || text.range(of: "다\\.\\s*(\\(?[0-9]{1,3}\\))?$", options: .regularExpression) == nil ? .heading : .paragraph
+    }
+
+    private static func isTextSectionHeading(_ lines: [LayoutLine]) -> Bool {
+        guard lines.count == 1 else { return false }
+        let text = lines[0].text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.count <= 60 && !text.contains("..") && !text.contains("…")
+            && text.range(of: multilevelSectionPattern, options: .regularExpression) != nil
     }
 
     private static func readingOrder(_ lines: [LayoutLine]) -> [LayoutLine] {

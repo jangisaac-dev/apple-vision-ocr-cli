@@ -109,6 +109,32 @@ final class MarkdownLayoutTests: XCTestCase {
         XCTAssertEqual(analyze([region("paragraph_title")], [line("1. 문제제기")]).blocks.first?.kind, .heading)
     }
 
+    func testMultilevelSectionHeadingKeepsSentenceEnding() {
+        let input = " 1.2.1. 설교는 신학이다. "
+        XCTAssertEqual(analyze([region("paragraph_title")], [line(input)]).blocks,
+                       [.init(kind: .heading, text: input)])
+    }
+
+    func testOnlyShortSingleLineTextSectionsBecomeHeadings() {
+        for input in ["1.2.1. 설교와 신학", " 1.2. 설교는 신학이다. ", "1.2. " + String(repeating: "가", count: 55)] {
+            XCTAssertEqual(analyze([region()], [line(input)]).blocks,
+                           [.init(kind: .heading, text: input)], input)
+            let top = analyze([region("text", 0.1, 0.08, 0.8, 0.04)], [line(input, 0.2, 0.09)])
+            XCTAssertEqual(top.topCandidates, [.init(kind: .heading, text: input)], input)
+        }
+        for input in ["1. 본문에서 말하고 있는 것은 무엇인가?", "1. 서론", "1.5 배",
+                      "1.2.1. 설교와 신학 ........ 3", "1.2. 설교와 신학 … 3",
+                      "1.2. " + String(repeating: "가", count: 56)] {
+            XCTAssertEqual(analyze([region()], [line(input)]).blocks,
+                           [.init(kind: .paragraph, text: input)], input)
+        }
+        XCTAssertEqual(analyze([region()], [line("1.2. 설교와 신학"), line("이어지는 본문", 0.2, 0.29)]).blocks.first?.kind,
+                       .paragraph)
+        for label in ["reference_content", "figure_title", "table"] {
+            XCTAssertEqual(analyze([region(label)], [line("1.2. 설교와 신학")]).blocks.first?.kind, .paragraph, label)
+        }
+    }
+
     func testTopContentCandidatePreservesKindAndUnassignedReadingOrder() {
         let result = analyze([region("paragraph_title", 0.1, 0.08, 0.8, 0.04), region()],
                              [line("body"), line("722• 신학과 실천(Theology and Praxis)", 0.2, 0.09), line("top", 0.2, 0.03)])
