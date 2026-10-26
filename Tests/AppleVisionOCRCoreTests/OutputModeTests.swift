@@ -56,4 +56,29 @@ final class OutputModeTests: XCTestCase {
 
         XCTAssertEqual(options.pageParallelism, .default)
     }
+    func testMarkdownIsExclusive() throws {
+        XCTAssertTrue(OCRJobOutputMode.markdown.writesMarkdown)
+        for (pdf, text, breaks) in [(true, false, false), (false, true, false), (false, false, true)] {
+            XCTAssertThrowsError(try OCRJobOutputMode(writesPDF: pdf, writesText: text, includesPageBreaks: breaks, writesMarkdown: true)) {
+                XCTAssertEqual($0 as? OCRJobOptionError, .markdownIsExclusive)
+            }
+        }
+    }
+
+    func testMarkdownRequiresExactlyOneOutputURL() throws {
+        let input = URL(fileURLWithPath: "/tmp/input.pdf")
+        let markdown = URL(fileURLWithPath: "/tmp/input.md")
+        let pages = URL(fileURLWithPath: "/tmp/pages.json")
+        for (md, json): (URL?, URL?) in [(nil, nil), (markdown, pages)] {
+            XCTAssertThrowsError(try OCRJobOptions(inputURL: input, pdfOutputURL: nil, textOutputURL: nil,
+                                                 outputMode: .markdown, markdownOutputURL: md, markdownPagesOutputURL: json)) {
+                XCTAssertEqual($0 as? OCRJobOptionError, .missingMarkdownOutputURL)
+            }
+        }
+        for (md, json): (URL?, URL?) in [(markdown, nil), (nil, pages)] {
+            XCTAssertNoThrow(try OCRJobOptions(inputURL: input, pdfOutputURL: nil, textOutputURL: nil,
+                                             outputMode: .markdown, markdownOutputURL: md, markdownPagesOutputURL: json))
+        }
+    }
+
 }

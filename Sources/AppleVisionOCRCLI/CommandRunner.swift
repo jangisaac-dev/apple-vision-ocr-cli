@@ -8,6 +8,7 @@ public final class CommandRunner {
     private let stderr: (String) -> Void
     private let pipeline: SearchablePDFPipeline
     private let executableURL: URL
+    private let environment: [String: String]
 
     public init(
         stdout: @escaping (String) -> Void = { print($0) },
@@ -15,12 +16,14 @@ public final class CommandRunner {
             FileHandle.standardError.write(Data((message + "\n").utf8))
         },
         pipeline: SearchablePDFPipeline = SearchablePDFPipeline(),
-        executableURL: URL? = nil
+        executableURL: URL? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         self.stdout = stdout
         self.stderr = stderr
         self.pipeline = pipeline
         self.executableURL = executableURL ?? Self.defaultExecutableURL()
+        self.environment = environment
     }
 
     public func run(arguments: [String], control: OCRJobControl = OCRJobControl()) -> ExitCode {
@@ -36,11 +39,19 @@ public final class CommandRunner {
                 try options.validateFileSystem()
 
                 if options.dryRun {
+                    if options.outputMode.writesMarkdown {
+                        guard LayoutModel.locate(environment: environment, executableURL: executableURL) != nil else {
+                            throw AppleVisionOCRError.visionFailure(LayoutModel.missingMessage)
+                        }
+                    }
                     if let outputURL = options.outputURL {
                         stdout(outputURL.path)
                     }
                     if let txtOutputURL = options.txtOutputURL {
                         stdout(txtOutputURL.path)
+                    }
+                    if let markdownURL = options.mdOutputURL ?? options.mdPagesOutputURL {
+                        stdout(markdownURL.path)
                     }
                     return .success
                 }
@@ -86,6 +97,21 @@ public final class CommandRunner {
                             executableURL: executableURL,
                             stderr: stderr
                         ).run(control: control, onProgress: reportProgress)
+                    } else if let markdownURL = options.mdOutputURL,
+                              let splitWorkers = options.splitWorkers {
+                        stderr("Running split Markdown OCR with \(splitWorkers) worker processes")
+                        try SplitProcessOCRRunner(executableURL: executableURL).run(
+                            inputURL: options.inputURL,
+                            output: .markdown(markdownURL),
+                            workerCount: splitWorkers,
+                            languages: options.languages,
+                            recognitionLevel: options.recognitionLevel,
+                            renderScale: options.renderScale,
+                            usesLanguageCorrection: options.usesLanguageCorrection,
+                            pageRange: options.pageRange,
+                            control: control,
+                            onProgress: reportProgress
+                        )
                     } else {
                         try ChunkedTextOCRRunner(
                             options: options,
@@ -108,6 +134,9 @@ public final class CommandRunner {
                 if let txtOutputURL = options.txtOutputURL {
                     stdout(txtOutputURL.path)
                 }
+                if let markdownURL = options.mdOutputURL ?? options.mdPagesOutputURL {
+                    stdout(markdownURL.path)
+                }
                 return .success
             }
         } catch let error as AppleVisionOCRError {
@@ -121,7 +150,7 @@ public final class CommandRunner {
 
     private static let helpText = """
     Usage:
-      apple-vision-ocr input.pdf [--output output.pdf] [--txt|--txt-output output.txt|--txt-only] [--page-breaks] [--lang ko,en] [--recognition-level accurate|fast] [--page-parallelism 1-16] [--render-scale 1.25|1.5|2.0] [--no-language-correction] [--page-range START-END] [--split-workers 2-16] [--dry-run]
+      apple-vision-ocr input.pdf [--output output.pdf] [--txt|--txt-output output.txt|--txt-only] [--md-only|--md-output output.md] [--page-breaks] [--lang ko,en] [--recognition-level accurate|fast] [--page-parallelism 1-16] [--render-scale 1.25|1.5|2.0] [--no-language-correction] [--page-range START-END] [--split-workers 2-16] [--dry-run]
       apple-vision-ocr --help
       apple-vision-ocr --version
 
@@ -130,6 +159,8 @@ public final class CommandRunner {
       --txt                      Also write OCR text to input.txt.
       --txt-output PATH          Also write OCR text to PATH.
       --txt-only                 Write only OCR text to input.txt, or to --txt-output when provided.
+      --md-only                  Write only layout-aware Markdown (titles, headings, footnotes, page markers) to input.md.
+      --md-output PATH           Write only layout-aware Markdown to PATH. Cannot be combined with PDF or TXT output.
       --page-breaks              Include ===== Page N ===== markers in text output.
       --lang LIST                Comma-separated Vision language list. Defaults to ko,en.
       --recognition-level VALUE  accurate or fast. Defaults to accurate. Fast supports a limited language set.
@@ -151,7 +182,7 @@ public final class CommandRunner {
       1   invalid usage
       2   input file problem
       3   PDF/OCR failure
-      4   Vision failure
+      4   Vision failure or layout model unavailable
       5   output already exists
       130 canceled by SIGINT
       143 canceled by SIGTERM
@@ -160,7 +191,7 @@ public final class CommandRunner {
     private static func defaultExecutableURL() -> URL {
         let executable = CommandLine.arguments.first ?? "apple-vision-ocr"
         if executable.contains("/") {
-            return URL(fileURLWithPath: executable).standardizedFileURL
+            return URL(fileURLWithPath: executable).standardizedFileURL.resolvingSymlinksInPath()
         }
 
         let fileManager = FileManager.default
@@ -168,11 +199,11 @@ public final class CommandRunner {
         for directory in pathValue.split(separator: ":") {
             let candidate = URL(fileURLWithPath: String(directory)).appendingPathComponent(executable)
             if fileManager.isExecutableFile(atPath: candidate.path) {
-                return candidate.standardizedFileURL
+                return candidate.standardizedFileURL.resolvingSymlinksInPath()
             }
         }
 
-        return URL(fileURLWithPath: executable)
+        return URL(fileURLWithPath: executable).resolvingSymlinksInPath()
     }
 }
 

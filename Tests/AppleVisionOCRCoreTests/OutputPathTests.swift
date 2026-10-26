@@ -33,4 +33,10 @@ final class OutputPathTests: XCTestCase {
             XCTAssertEqual((error as? AppleVisionOCRError)?.exitCode, .inputFileProblem)
         }
     }
+    func testDerivesMarkdownOutputNextToInput() throws {
+        XCTAssertEqual(try OutputPathResolver.defaultMarkdownOutputURL(for: URL(fileURLWithPath: "/tmp/file.name.pdf")).path,
+                       "/tmp/file.name.md")
+        XCTAssertThrowsError(try OutputPathResolver.defaultMarkdownOutputURL(for: URL(fileURLWithPath: "/tmp/input.png")))
+    }
+
 }

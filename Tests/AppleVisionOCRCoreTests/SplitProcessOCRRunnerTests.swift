@@ -123,6 +123,46 @@ final class SplitProcessOCRRunnerTests: XCTestCase {
         }
     }
 
+    func testMarkdownMergeResolvesFootnotesAcrossChunkBoundaryAndRefusesOverwrite() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = MarkdownPage(pdfPage: 1, printedPage: 10, topCandidates: [],
+                                 blocks: [.init(kind: .paragraph, text: "본문1)")],
+                                 footnotes: [.init(marker: "1", text: "첫 줄")])
+        let second = MarkdownPage(pdfPage: 2, printedPage: nil, topCandidates: ["11 머리말"],
+                                  blocks: [.init(kind: .paragraph, text: "다음 본문")],
+                                  footnotes: [.init(marker: nil, text: "이어진 줄")])
+        let chunks = [first, second].enumerated().map { directory.appendingPathComponent("chunk-\($0.offset).json") }
+        for (url, page) in zip(chunks, [first, second]) { try JSONEncoder().encode([page]).write(to: url) }
+        let output = directory.appendingPathComponent("output.md")
+        try SplitProcessOCRRunner.writeCombinedMarkdown(chunks, to: output)
+        let markdown = try String(contentsOf: output, encoding: .utf8)
+        XCTAssertEqual(markdown, MarkdownDocumentRenderer.render(pages: [first, second]))
+        XCTAssertTrue(markdown.contains("[^1]: 첫 줄\n    이어진 줄"))
+        XCTAssertTrue(markdown.contains("[p. 11]"))
+        XCTAssertThrowsError(try SplitProcessOCRRunner.writeCombinedMarkdown(chunks, to: output))
+        XCTAssertEqual(try String(contentsOf: output, encoding: .utf8), markdown)
+    }
+
+    func testMarkdownExistingOutputIsRejectedBeforeModelCheck() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let input = directory.appendingPathComponent("input.pdf")
+        let output = directory.appendingPathComponent("output.md")
+        try makePDF(at: input, pageCount: 1)
+        try Data("existing".utf8).write(to: output)
+        var modelChecks = 0
+        let runner = SplitProcessOCRRunner(executableURL: input, layoutModelCheck: { modelChecks += 1 })
+        XCTAssertThrowsError(try runner.run(inputURL: input, output: .markdown(output), workerCount: 2,
+                                            languages: ["ko", "en"], recognitionLevel: .accurate,
+                                            renderScale: .quality)) { error in
+            XCTAssertEqual(error as? AppleVisionOCRError, .outputAlreadyExists("output already exists: \(output.path)"))
+        }
+        XCTAssertEqual(modelChecks, 0)
+    }
+
     private func makePDF(at url: URL, pageCount: Int) throws {
         var mediaBox = CGRect(x: 0, y: 0, width: 100, height: 100)
         guard let context = CGContext(url as CFURL, mediaBox: &mediaBox, nil) else {

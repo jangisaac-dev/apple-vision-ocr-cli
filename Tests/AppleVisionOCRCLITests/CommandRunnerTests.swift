@@ -88,6 +88,32 @@ final class CommandRunnerTests: XCTestCase {
         XCTAssertEqual(output, ["apple-vision-ocr \(CommandRunner.version)"])
     }
 
+    func testMarkdownDryRunRequiresModelAndPrintsMarkdownOrJSONPath() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let input = directory.appendingPathComponent("input.pdf")
+        try makePDF(at: input, pageCount: 1)
+        let executable = directory.appendingPathComponent("bin/apple-vision-ocr")
+        var output: [String] = []
+        var errors: [String] = []
+        let missing = CommandRunner(stdout: { output.append($0) }, stderr: { errors.append($0) },
+                                    executableURL: executable, environment: [:])
+        XCTAssertEqual(missing.run(arguments: [input.path, "--md-only", "--dry-run"]), .visionFailure)
+        XCTAssertTrue(output.isEmpty)
+        XCTAssertEqual(errors, ["error: " + LayoutModel.missingMessage])
+        let model = directory.appendingPathComponent("model.mlmodelc")
+        try FileManager.default.createDirectory(at: model, withIntermediateDirectories: true)
+        let present = CommandRunner(stdout: { output.append($0) }, stderr: { errors.append($0) },
+                                    executableURL: executable,
+                                    environment: ["APPLE_VISION_OCR_LAYOUT_MODEL": model.path])
+        XCTAssertEqual(present.run(arguments: [input.path, "--md-only", "--dry-run"]), .success)
+        XCTAssertEqual(output, [input.deletingPathExtension().appendingPathExtension("md").path])
+        output = []
+        let pages = directory.appendingPathComponent("pages.json")
+        XCTAssertEqual(present.run(arguments: [input.path, "--md-pages-output", pages.path, "--dry-run"]), .success)
+        XCTAssertEqual(output, [pages.path])
+    }
+
     private func makeTemporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("CommandRunnerTests-\(UUID().uuidString)")

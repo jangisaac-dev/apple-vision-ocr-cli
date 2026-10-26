@@ -2,6 +2,8 @@ import Foundation
 
 public enum OCRJobOptionError: Error, Equatable {
     case missingOutput
+    case markdownIsExclusive
+    case missingMarkdownOutputURL
     case pageBreaksRequireText
     case missingPDFOutputURL
     case missingTextOutputURL
@@ -13,9 +15,13 @@ public struct OCRJobOutputMode: Equatable {
     public let writesPDF: Bool
     public let writesText: Bool
     public let includesPageBreaks: Bool
+    public let writesMarkdown: Bool
 
-    public init(writesPDF: Bool, writesText: Bool, includesPageBreaks: Bool) throws {
-        guard writesPDF || writesText else {
+    public init(writesPDF: Bool, writesText: Bool, includesPageBreaks: Bool, writesMarkdown: Bool = false) throws {
+        guard !writesMarkdown || (!writesPDF && !writesText && !includesPageBreaks) else {
+            throw OCRJobOptionError.markdownIsExclusive
+        }
+        guard writesPDF || writesText || writesMarkdown else {
             throw OCRJobOptionError.missingOutput
         }
         guard writesText || !includesPageBreaks else {
@@ -25,7 +31,15 @@ public struct OCRJobOutputMode: Equatable {
         self.writesPDF = writesPDF
         self.writesText = writesText
         self.includesPageBreaks = includesPageBreaks
+        self.writesMarkdown = writesMarkdown
     }
+
+    public static let markdown = try! OCRJobOutputMode(
+        writesPDF: false,
+        writesText: false,
+        includesPageBreaks: false,
+        writesMarkdown: true
+    )
 
     public static let searchablePDF = try! OCRJobOutputMode(
         writesPDF: true,
@@ -56,17 +70,20 @@ public struct OCRJobOutputSelection: Equatable {
     public let writesText: Bool
     public let writesPDF: Bool
     public let includesPageBreaks: Bool
+    public let writesMarkdown: Bool
     public let outputMode: OCRJobOutputMode
 
-    public init(writesText: Bool, writesPDF: Bool, includesPageBreaks: Bool) throws {
+    public init(writesText: Bool, writesPDF: Bool, includesPageBreaks: Bool, writesMarkdown: Bool = false) throws {
         let outputMode = try OCRJobOutputMode(
             writesPDF: writesPDF,
             writesText: writesText,
-            includesPageBreaks: includesPageBreaks
+            includesPageBreaks: includesPageBreaks,
+            writesMarkdown: writesMarkdown
         )
         self.writesText = writesText
         self.writesPDF = writesPDF
         self.includesPageBreaks = includesPageBreaks
+        self.writesMarkdown = writesMarkdown
         self.outputMode = outputMode
     }
 }
@@ -104,6 +121,8 @@ public struct OCRJobOptions: Equatable {
     public let renderScale: OCRRenderScale
     public let usesLanguageCorrection: Bool
     public let pageRange: ClosedRange<Int>?
+    public let markdownOutputURL: URL?
+    public let markdownPagesOutputURL: URL?
 
     public init(
         inputURL: URL,
@@ -115,13 +134,18 @@ public struct OCRJobOptions: Equatable {
         pageParallelism: OCRJobParallelism = .default,
         renderScale: OCRRenderScale = .quality,
         usesLanguageCorrection: Bool = true,
-        pageRange: ClosedRange<Int>? = nil
+        pageRange: ClosedRange<Int>? = nil,
+        markdownOutputURL: URL? = nil,
+        markdownPagesOutputURL: URL? = nil
     ) throws {
         if outputMode.writesPDF, pdfOutputURL == nil {
             throw OCRJobOptionError.missingPDFOutputURL
         }
         if outputMode.writesText, textOutputURL == nil {
             throw OCRJobOptionError.missingTextOutputURL
+        }
+        if outputMode.writesMarkdown, (markdownOutputURL == nil) == (markdownPagesOutputURL == nil) {
+            throw OCRJobOptionError.missingMarkdownOutputURL
         }
         if let unsupportedLanguages = try? VisionLanguageResolver.unsupportedLanguages(
             languages,
@@ -140,5 +164,7 @@ public struct OCRJobOptions: Equatable {
         self.renderScale = renderScale
         self.usesLanguageCorrection = usesLanguageCorrection
         self.pageRange = pageRange
+        self.markdownOutputURL = markdownOutputURL
+        self.markdownPagesOutputURL = markdownPagesOutputURL
     }
 }

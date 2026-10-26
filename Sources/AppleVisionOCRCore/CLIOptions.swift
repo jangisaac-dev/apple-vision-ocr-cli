@@ -4,6 +4,8 @@ public struct CLIOptions {
     public let inputURL: URL
     public let outputURL: URL?
     public let txtOutputURL: URL?
+    public let mdOutputURL: URL?
+    public let mdPagesOutputURL: URL?
     public let outputMode: OCRJobOutputMode
     public let includePageBreaks: Bool
     public let languages: [String]
@@ -25,6 +27,9 @@ public struct CLIOptions {
         var wantsDefaultTextOutput = false
         var wantsTextOnlyOutput = false
         var txtOutputURL: URL?
+        var wantsMarkdownOnlyOutput = false
+        var mdOutputURL: URL?
+        var mdPagesOutputURL: URL?
         var includePageBreaks = false
         var languages = ["ko", "en"]
         var recognitionLevel = OCRRecognitionLevel.accurate
@@ -50,6 +55,14 @@ public struct CLIOptions {
             case "--txt-output":
                 let value = try valueAfterOption(argument, arguments: arguments, index: &index)
                 txtOutputURL = URL(fileURLWithPath: value)
+            case "--md-only":
+                wantsMarkdownOnlyOutput = true
+            case "--md-output":
+                let value = try valueAfterOption(argument, arguments: arguments, index: &index)
+                mdOutputURL = URL(fileURLWithPath: value)
+            case "--md-pages-output":
+                let value = try valueAfterOption(argument, arguments: arguments, index: &index)
+                mdPagesOutputURL = URL(fileURLWithPath: value)
             case "--page-breaks":
                 includePageBreaks = true
             case "--lang":
@@ -93,6 +106,16 @@ public struct CLIOptions {
             throw AppleVisionOCRError.invalidUsage("missing input PDF")
         }
 
+        let writesMarkdown = wantsMarkdownOnlyOutput || mdOutputURL != nil || mdPagesOutputURL != nil
+        guard !writesMarkdown || (!wantsDefaultTextOutput && !wantsTextOnlyOutput && txtOutputURL == nil && outputURL == nil && !includePageBreaks) else {
+            throw AppleVisionOCRError.invalidUsage("Markdown output cannot be combined with PDF or text output options")
+        }
+        guard mdPagesOutputURL == nil || (!wantsMarkdownOnlyOutput && mdOutputURL == nil && splitWorkers == nil) else {
+            throw AppleVisionOCRError.invalidUsage("--md-pages-output cannot be combined with --md-only, --md-output, or --split-workers")
+        }
+        let resolvedMarkdownOutputURL = try writesMarkdown && mdPagesOutputURL == nil
+            ? mdOutputURL ?? OutputPathResolver.defaultMarkdownOutputURL(for: inputURL)
+            : nil
         guard !(wantsDefaultTextOutput && txtOutputURL != nil) else {
             throw AppleVisionOCRError.invalidUsage("use either --txt or --txt-output, not both")
         }
@@ -105,7 +128,7 @@ public struct CLIOptions {
         guard !includePageBreaks || wantsDefaultTextOutput || wantsTextOnlyOutput || txtOutputURL != nil else {
             throw AppleVisionOCRError.invalidUsage("--page-breaks requires --txt, --txt-only, or --txt-output")
         }
-        let resolvedOutputURL = try wantsTextOnlyOutput
+        let resolvedOutputURL = try wantsTextOnlyOutput || writesMarkdown
             ? nil
             : outputURL ?? OutputPathResolver.defaultOutputURL(for: inputURL)
         let resolvedTextOutputURL = try wantsDefaultTextOutput || (wantsTextOnlyOutput && txtOutputURL == nil)
@@ -114,13 +137,16 @@ public struct CLIOptions {
         let outputMode = try OCRJobOutputMode(
             writesPDF: resolvedOutputURL != nil,
             writesText: resolvedTextOutputURL != nil,
-            includesPageBreaks: includePageBreaks
+            includesPageBreaks: includePageBreaks,
+            writesMarkdown: writesMarkdown
         )
         try validateRecognitionLanguages(languages, recognitionLevel: recognitionLevel)
         return CLIOptions(
             inputURL: inputURL,
             outputURL: resolvedOutputURL,
             txtOutputURL: resolvedTextOutputURL,
+            mdOutputURL: resolvedMarkdownOutputURL,
+            mdPagesOutputURL: mdPagesOutputURL,
             outputMode: outputMode,
             includePageBreaks: includePageBreaks,
             languages: languages,
@@ -146,6 +172,12 @@ public struct CLIOptions {
         if let txtOutputURL {
             guard txtOutputURL.pathExtension.lowercased() == "txt" else {
                 throw AppleVisionOCRError.invalidUsage("text output must be a TXT file: \(txtOutputURL.path)")
+            }
+        }
+
+        for (url, extensionName) in [(mdOutputURL, "md"), (mdPagesOutputURL, "json")] {
+            if let url, url.pathExtension.lowercased() != extensionName {
+                throw AppleVisionOCRError.invalidUsage("Markdown output must be a .\(extensionName) file: \(url.path)")
             }
         }
 
@@ -177,6 +209,19 @@ public struct CLIOptions {
             }
             guard !fileManager.fileExists(atPath: txtOutputURL.path) else {
                 throw AppleVisionOCRError.outputAlreadyExists("text output already exists: \(txtOutputURL.path)")
+            }
+        }
+
+        for url in [mdOutputURL, mdPagesOutputURL].compactMap({ $0 }) {
+            guard standardizedInput != url.standardizedFileURL.path else {
+                throw AppleVisionOCRError.outputAlreadyExists("Markdown output path must differ from input path")
+            }
+            guard !fileManager.fileExists(atPath: url.path) else {
+                throw AppleVisionOCRError.outputAlreadyExists("Markdown output already exists: \(url.path)")
+            }
+            let directory = url.deletingLastPathComponent()
+            guard fileManager.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+                throw AppleVisionOCRError.inputFileProblem("Markdown output directory does not exist: \(directory.path)")
             }
         }
 

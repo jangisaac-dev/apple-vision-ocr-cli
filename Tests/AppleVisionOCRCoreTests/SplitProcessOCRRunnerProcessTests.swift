@@ -70,6 +70,36 @@ final class SplitProcessOCRRunnerProcessTests: XCTestCase {
         try assertRecordedProcessesExited(in: directory)
     }
 
+    func testMarkdownRunPassesPageJSONArgumentsAndChecksModelOnce() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let inputURL = directory.appendingPathComponent("input.pdf")
+        let outputURL = directory.appendingPathComponent("output.md")
+        try makePDF(at: inputURL, pageCount: 2)
+        let workerURL = try makeWorker(in: directory, body: """
+        page=${range%-*}
+        printf '[{"pdfPage":%s,"topCandidates":[],"blocks":[{"kind":"paragraph","text":"본문"}],"footnotes":[]}]' "$page" > "$output"
+        """)
+        var checks = 0
+        try SplitProcessOCRRunner(executableURL: workerURL, layoutModelCheck: { checks += 1 }).run(
+            inputURL: inputURL, output: .markdown(outputURL), workerCount: 2,
+            languages: ["ko", "en"], recognitionLevel: .accurate, renderScale: .balanced,
+            usesLanguageCorrection: false
+        )
+        XCTAssertEqual(checks, 1)
+        for (index, range) in ["1-1", "2-2"].enumerated() {
+            let arguments = try recordedArguments(in: directory, range: range)
+            let chunk = try XCTUnwrap(arguments[safe: 2])
+            XCTAssertEqual(arguments, [inputURL.path, "--md-pages-output", chunk,
+                                       "--lang", "ko,en", "--recognition-level", "accurate",
+                                       "--render-scale", "1.5", "--page-range", range,
+                                       "--no-language-correction"])
+            XCTAssertEqual(URL(fileURLWithPath: chunk).lastPathComponent, "chunk-\(index).json")
+        }
+        XCTAssertEqual(try String(contentsOf: outputURL, encoding: .utf8), "[PDF p. 1]\n\n본문\n\n[PDF p. 2]\n\n본문\n")
+        try assertRecordedProcessesExited(in: directory)
+    }
+
     func testRunCountsOnlyRealStderrProgressMarkersAndCapsAtTotal() throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -595,7 +625,7 @@ final class SplitProcessOCRRunnerProcessTests: XCTestCase {
                     output=$2
                     shift 2
                     ;;
-                --txt-output)
+                --md-pages-output|--txt-output)
                     text_output=$2
                     output=$2
                     shift 2

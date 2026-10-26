@@ -372,4 +372,62 @@ final class CLIOptionsTests: XCTestCase {
 
         XCTAssertNoThrow(try options.validateFileSystem())
     }
+    func testMarkdownOutputFlags() throws {
+        for flags in [["--md-only"], ["--md-output", "/tmp/custom.md"], ["--md-only", "--md-output", "/tmp/custom.md"]] {
+            let options = try CLIOptions.parse(["/tmp/input.pdf"] + flags)
+            XCTAssertEqual(options.outputMode, .markdown)
+            XCTAssertNil(options.outputURL)
+            XCTAssertNil(options.txtOutputURL)
+            XCTAssertNil(options.mdPagesOutputURL)
+            XCTAssertEqual(options.mdOutputURL?.path, flags.contains("/tmp/custom.md") ? "/tmp/custom.md" : "/tmp/input.md")
+        }
+        let options = try CLIOptions.parse(["/tmp/input.pdf", "--md-pages-output", "/tmp/pages.json"])
+        XCTAssertEqual(options.outputMode, .markdown)
+        XCTAssertNil(options.mdOutputURL)
+        XCTAssertNil(options.outputURL)
+        XCTAssertEqual(options.mdPagesOutputURL?.path, "/tmp/pages.json")
+    }
+
+    func testMarkdownRejectsOtherOutputFlagsInEitherOrder() {
+        let conflicting = [["--output", "/tmp/out.pdf"], ["--txt"], ["--txt-only"], ["--txt-output", "/tmp/out.txt"], ["--page-breaks"]]
+        for markdown in [["--md-only"], ["--md-output", "/tmp/out.md"], ["--md-pages-output", "/tmp/pages.json"]] {
+            for other in conflicting {
+                for flags in [markdown + other, other + markdown] {
+                    XCTAssertThrowsError(try CLIOptions.parse(["/tmp/input.pdf"] + flags)) {
+                        XCTAssertEqual(($0 as? AppleVisionOCRError)?.exitCode, .invalidUsage)
+                    }
+                }
+            }
+        }
+        for other in [["--md-only"], ["--md-output", "/tmp/out.md"], ["--split-workers", "2"]] {
+            XCTAssertThrowsError(try CLIOptions.parse(["/tmp/input.pdf", "--md-pages-output", "/tmp/pages.json"] + other))
+        }
+        XCTAssertNoThrow(try CLIOptions.parse(["/tmp/input.pdf", "--md-only", "--split-workers", "2"]))
+    }
+
+    func testMarkdownFileSystemValidation() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let input = directory.appendingPathComponent("input.pdf")
+        try Data("%PDF-1.4\n".utf8).write(to: input)
+        for (flag, filename) in [("--md-output", "input.md"), ("--md-pages-output", "pages.json")] {
+            let output = directory.appendingPathComponent(filename)
+            let options = try CLIOptions.parse([input.path, flag, output.path])
+            XCTAssertNoThrow(try options.validateFileSystem())
+            try Data().write(to: output)
+            XCTAssertThrowsError(try options.validateFileSystem()) {
+                XCTAssertEqual(($0 as? AppleVisionOCRError)?.exitCode, .outputAlreadyExists)
+            }
+            let invalid = try CLIOptions.parse([input.path, flag, directory.appendingPathComponent("out.txt").path])
+            XCTAssertThrowsError(try invalid.validateFileSystem()) {
+                XCTAssertEqual(($0 as? AppleVisionOCRError)?.exitCode, .invalidUsage)
+            }
+            let missingParent = try CLIOptions.parse([input.path, flag, directory.appendingPathComponent("missing/" + filename).path])
+            XCTAssertThrowsError(try missingParent.validateFileSystem()) {
+                XCTAssertEqual(($0 as? AppleVisionOCRError)?.exitCode, .inputFileProblem)
+            }
+        }
+    }
+
 }

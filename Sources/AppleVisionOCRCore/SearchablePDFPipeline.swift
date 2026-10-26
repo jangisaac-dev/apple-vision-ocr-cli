@@ -74,6 +74,8 @@ public final class SearchablePDFPipeline {
     private let writer: PDFTextOverlayWriter
     private let textWriter: TextOutputWriter
     private let textPresenceDetector: PDFTextPresenceDetector
+    private let layoutLoader: () throws -> any LayoutAnalyzing
+    private let tableRecognizer: any TableRecognizing
 
     public convenience init() {
         self.init(
@@ -90,13 +92,17 @@ public final class SearchablePDFPipeline {
         recognizer: any TextRecognizing = VisionTextRecognizer(),
         writer: PDFTextOverlayWriter = PDFTextOverlayWriter(),
         textWriter: TextOutputWriter = TextOutputWriter(),
-        textPresenceDetector: PDFTextPresenceDetector = PDFTextPresenceDetector()
+        textPresenceDetector: PDFTextPresenceDetector = PDFTextPresenceDetector(),
+        layoutLoader: @escaping () throws -> any LayoutAnalyzing = { try LayoutModel.load() },
+        tableRecognizer: any TableRecognizing = DocumentTableRecognizer()
     ) {
         self.renderer = renderer
         self.recognizer = recognizer
         self.writer = writer
         self.textWriter = textWriter
         self.textPresenceDetector = textPresenceDetector
+        self.layoutLoader = layoutLoader
+        self.tableRecognizer = tableRecognizer
     }
 
     public func run(options: CLIOptions, progress: @escaping (String) -> Void = { _ in }) throws {
@@ -120,7 +126,9 @@ public final class SearchablePDFPipeline {
             pageParallelism: options.pageParallelism,
             renderScale: options.renderScale,
             usesLanguageCorrection: options.usesLanguageCorrection,
-            pageRange: options.pageRange
+            pageRange: options.pageRange,
+            markdownOutputURL: options.mdOutputURL,
+            markdownPagesOutputURL: options.mdPagesOutputURL
         )
 
         try run(job: jobOptions, control: control, progress: progress)
@@ -148,6 +156,7 @@ public final class SearchablePDFPipeline {
         }
         let pageNumbers = try selectedPageNumbers(for: options, totalPageCount: document.numberOfPages)
 
+        let layout = options.outputMode.writesMarkdown ? try layoutLoader() : nil
         let textPages = try pagesWithExistingTextIfNeeded(for: options, pageNumbers: pageNumbers)
         if !textPages.isEmpty {
             progress(OCRProgressEvent(
@@ -160,15 +169,17 @@ public final class SearchablePDFPipeline {
         }
 
         let pageLimiter = externalPageLimiter ?? OCRParallelismLimiter(parallelism: options.pageParallelism)
-        let pageResults = try recognizePages(
+        let results = try recognizePages(
             pageNumbers: pageNumbers,
             options: options,
             textPages: textPages,
             control: control,
             pageLimiter: pageLimiter,
+            layout: layout,
             progress: progress
         )
 
+        let pageResults = results.ocr
         if control.isCanceled {
             throw AppleVisionOCRError.pdfFailure("OCR job canceled")
         }
@@ -192,6 +203,15 @@ public final class SearchablePDFPipeline {
             )
         }
 
+        if options.outputMode.writesMarkdown {
+            if let outputURL = options.markdownOutputURL {
+                try AtomicOutputWriter.write(Data(MarkdownDocumentRenderer.render(pages: results.markdown).utf8), to: outputURL)
+            }
+            if let outputURL = options.markdownPagesOutputURL {
+                try AtomicOutputWriter.write(JSONEncoder().encode(results.markdown), to: outputURL)
+            }
+        }
+
         progress(OCRProgressEvent(
             stage: .completed,
             currentFile: options.inputURL.lastPathComponent,
@@ -207,12 +227,14 @@ public final class SearchablePDFPipeline {
         textPages: Set<Int>,
         control: OCRJobControl,
         pageLimiter: OCRParallelismLimiter,
+        layout: (any LayoutAnalyzing)?,
         progress: @escaping ProgressHandler
-    ) throws -> [PDFPageOCRResult] {
+    ) throws -> (ocr: [PDFPageOCRResult], markdown: [MarkdownPage]) {
         let resultLock = NSLock()
         let errorLock = NSLock()
         let pageLock = NSLock()
         var pageResults = Array<PDFPageOCRResult?>(repeating: nil, count: pageNumbers.count)
+        var markdownPages = Array<MarkdownPage?>(repeating: nil, count: pageNumbers.count)
         var completedPages = 0
         var nextPageIndex = 0
         var firstError: Error?
@@ -313,7 +335,7 @@ public final class SearchablePDFPipeline {
         for _ in 0..<visionConsumerCount {
             if control.isCanceled { break }
             visionGroup.enter()
-            visionQueue.async { [recognizer] in
+            visionQueue.async { [recognizer, tableRecognizer] in
                 defer { visionGroup.leave() }
 
                 while !control.isCanceled {
@@ -365,6 +387,36 @@ public final class SearchablePDFPipeline {
                             usesLanguageCorrection: options.usesLanguageCorrection
                         )
 
+                        var markdownPage: MarkdownPage?
+                        if let layout {
+                            try Self.checkCancellation(control)
+                            let regions = try layout.regions(for: item.rendered.image)
+                            let lines = Self.layoutLines(recognizedText)
+                            markdownPage = try MarkdownPageAnalyzer.analyze(
+                                pdfPage: item.pageNumber, regions: regions, lines: lines,
+                                recognizeCrop: { rect in
+                                    try Self.checkCancellation(control)
+                                    guard let crop = Self.crop(item.rendered.image, rect: rect) else { return [] }
+                                    let text = try recognizer.recognize(
+                                        image: crop.image, languages: options.languages,
+                                        recognitionLevel: options.recognitionLevel,
+                                        usesLanguageCorrection: options.usesLanguageCorrection)
+                                    return Self.layoutLines(text).map { line in
+                                        LayoutLine(text: line.text, rect: CGRect(
+                                            x: rect.minX + line.rect.minX * rect.width,
+                                            y: rect.minY + line.rect.minY * rect.height,
+                                            width: line.rect.width * rect.width,
+                                            height: line.rect.height * rect.height))
+                                    }
+                                }, recognizeTable: { rect in
+                                    try Self.checkCancellation(control)
+                                    guard let crop = Self.crop(item.rendered.image, rect: rect) else { return nil }
+                                    return try tableRecognizer.markdown(for: crop.image, languages: options.languages,
+                                                                        usesLanguageCorrection: options.usesLanguageCorrection)
+                                })
+                            try Self.checkCancellation(control)
+                        }
+
                         let overlays = recognizedText.map {
                             PDFTextOverlay(
                                 text: $0.text,
@@ -382,6 +434,7 @@ public final class SearchablePDFPipeline {
                         let completedAfter = resultLock.withLock {
                             let resultIndex = pageResultIndexes[item.pageNumber] ?? 0
                             pageResults[resultIndex] = result
+                            markdownPages[resultIndex] = markdownPage
                             completedPages += 1
                             return completedPages
                         }
@@ -416,12 +469,35 @@ public final class SearchablePDFPipeline {
             fputs("[VisionPipeline] Max concurrent Vision requests observed: \(maxConcurrentVision)\n", stderr)
         }
 
-        return try pageResults.enumerated().map { index, result in
+        let ocr = try pageResults.enumerated().map { index, result in
             guard let result else {
                 throw AppleVisionOCRError.pdfFailure("missing OCR result for page \(pageNumbers[index])")
             }
             return result
         }
+        return (ocr, markdownPages.compactMap { $0 })
+    }
+
+    private static func checkCancellation(_ control: OCRJobControl) throws {
+        if control.isCanceled { throw AppleVisionOCRError.pdfFailure("OCR job canceled") }
+    }
+
+    static func layoutLines(_ text: [RecognizedTextBox]) -> [LayoutLine] {
+        text.map { box in
+            LayoutLine(text: box.text, rect: CGRect(x: box.boundingBox.minX, y: 1 - box.boundingBox.maxY,
+                                                  width: box.boundingBox.width, height: box.boundingBox.height))
+        }
+    }
+
+    static func crop(_ image: CGImage, rect: CGRect) -> (image: CGImage, rect: CGRect)? {
+        let width = CGFloat(image.width), height = CGFloat(image.height)
+        let pixels = CGRect(x: floor(rect.minX * width), y: floor(rect.minY * height),
+                            width: ceil(rect.maxX * width) - floor(rect.minX * width),
+                            height: ceil(rect.maxY * height) - floor(rect.minY * height))
+            .intersection(CGRect(x: 0, y: 0, width: width, height: height))
+        guard !pixels.isNull, !pixels.isEmpty, let cropped = image.cropping(to: pixels) else { return nil }
+        return (cropped, CGRect(x: pixels.minX / width, y: pixels.minY / height,
+                               width: pixels.width / width, height: pixels.height / height))
     }
 
     private func writePDFAtomically(sourceDocument: CGPDFDocument, pages: [PDFPageOCRResult], to outputURL: URL) throws {

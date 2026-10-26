@@ -6,6 +6,7 @@ public final class SplitProcessOCRRunner {
     public enum Output: Equatable {
         case searchablePDF(URL)
         case text(URL)
+        case markdown(URL)
         case searchablePDFAndText(pdf: URL, text: URL)
     }
 
@@ -16,10 +17,16 @@ public final class SplitProcessOCRRunner {
 
     private let executableURL: URL
     private let fileManager: FileManager
+    private let layoutModelCheck: () throws -> Void
 
-    public init(executableURL: URL, fileManager: FileManager = .default) {
+    public init(
+        executableURL: URL,
+        fileManager: FileManager = .default,
+        layoutModelCheck: @escaping () throws -> Void = { _ = try LayoutModel.load() }
+    ) {
         self.executableURL = executableURL
         self.fileManager = fileManager
+        self.layoutModelCheck = layoutModelCheck
     }
 
     public func run(
@@ -68,6 +75,13 @@ public final class SplitProcessOCRRunner {
             }
         }
 
+        if case .markdown(let outputURL) = output {
+            guard !fileManager.fileExists(atPath: outputURL.path) else {
+                throw AppleVisionOCRError.outputAlreadyExists("output already exists: \(outputURL.path)")
+            }
+            try layoutModelCheck()
+        }
+
         let chunks = Self.planChunks(pageCount: selectedPages.count, workerCount: effectiveWorkers)
             .map { ($0.lowerBound + pageOffset)...($0.upperBound + pageOffset) }
             .enumerated().map {
@@ -100,6 +114,8 @@ public final class SplitProcessOCRRunner {
         switch output {
         case .searchablePDF(let outputURL):
             try Self.mergePDFs(chunks.map(\.outputURL), to: outputURL, fileManager: fileManager)
+        case .markdown(let outputURL):
+            try Self.writeCombinedMarkdown(chunks.map(\.outputURL), to: outputURL, fileManager: fileManager)
         case .text(let outputURL):
             try Self.writeCombinedText(chunks.map(\.outputURL), to: outputURL, fileManager: fileManager)
         case .searchablePDFAndText(let pdfOutputURL, let textOutputURL):
@@ -191,6 +207,19 @@ public final class SplitProcessOCRRunner {
             try? fileManager.removeItem(at: temporaryURL)
             throw AppleVisionOCRError.pdfFailure("failed to write text output: \(outputURL.path)")
         }
+    }
+
+    static func writeCombinedMarkdown(
+        _ pageURLs: [URL],
+        to outputURL: URL,
+        fileManager: FileManager = .default
+    ) throws {
+        guard !fileManager.fileExists(atPath: outputURL.path) else {
+            throw AppleVisionOCRError.outputAlreadyExists("output already exists: \(outputURL.path)")
+        }
+        let pages = try pageURLs.flatMap { try JSONDecoder().decode([MarkdownPage].self, from: Data(contentsOf: $0)) }
+        let markdown = MarkdownDocumentRenderer.render(pages: pages)
+        try AtomicOutputWriter.write(Data(markdown.utf8), to: outputURL, fileManager: fileManager)
     }
 
     private struct Chunk {
@@ -452,6 +481,8 @@ public final class SplitProcessOCRRunner {
                 inputURL.path,
                 "--output", chunk.outputURL.path
             ] + commonArguments
+        case .markdown:
+            return [inputURL.path, "--md-pages-output", chunk.outputURL.path] + commonArguments
         case .text:
             var arguments = [
                 inputURL.path,
@@ -546,6 +577,8 @@ private extension SplitProcessOCRRunner.Output {
         switch self {
         case .searchablePDF:
             return "pdf"
+        case .markdown:
+            return "json"
         case .text:
             return "txt"
         case .searchablePDFAndText:
@@ -555,7 +588,7 @@ private extension SplitProcessOCRRunner.Output {
 
     var textPathExtension: String? {
         switch self {
-        case .searchablePDF, .text:
+        case .searchablePDF, .text, .markdown:
             return nil
         case .searchablePDFAndText:
             return "txt"

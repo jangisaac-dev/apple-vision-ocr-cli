@@ -24,4 +24,11 @@ public enum OutputPathResolver {
             .appendingPathComponent(baseName)
             .appendingPathExtension("txt")
     }
+    public static func defaultMarkdownOutputURL(for inputURL: URL) throws -> URL {
+        guard inputURL.pathExtension.lowercased() == "pdf" else {
+            throw AppleVisionOCRError.inputFileProblem("input must be a PDF: \(inputURL.path)")
+        }
+        return inputURL.deletingPathExtension().appendingPathExtension("md")
+    }
+
 }
