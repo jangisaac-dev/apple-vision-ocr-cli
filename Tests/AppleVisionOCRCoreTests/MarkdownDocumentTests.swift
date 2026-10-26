@@ -155,9 +155,29 @@ final class MarkdownDocumentTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(MarkdownPage.self, from: JSONEncoder().encode(original)), original)
     }
 
+    func testPrintedPageOffsetsUseOriginalNeighborsAndLeaveTiesUnchanged() {
+        let text = MarkdownDocumentRenderer.render(pages: [
+            page(3, printed: 711), page(4), page(5, printed: 713), page(6, printed: 714),
+            page(12, printed: 720), page(13, printed: 121), page(14, candidates: ["722• 신학과 실천(Theology and Praxis)"]),
+            page(15, printed: 723), page(16, printed: 724)
+        ])
+        XCTAssertEqual(text, "[p. 711]\n\n[p. 712]\n\n[p. 713]\n\n[p. 714]\n\n[p. 720]\n\n[p. 721]\n\n[p. 722]\n\n[p. 723]\n\n[p. 724]\n")
+        let tied = MarkdownDocumentRenderer.render(pages: [page(1, printed: 101), page(2, printed: 102),
+            page(3, printed: 500), page(4, printed: 204), page(5, printed: 205)])
+        XCTAssertTrue(tied.contains("[p. 500]"))
+    }
+
+    func testTopCandidatesKeepHeadingsAndMergeOnlyConsecutiveParagraphs() {
+        let original = MarkdownPage(pdfPage: 1, printedPage: nil, topCandidates: [
+            .init(kind: .paragraph, text: "first"), .init(kind: .paragraph, text: "second"),
+            .init(kind: .heading, text: "1. 문제제기"), .init(kind: .paragraph, text: "third")
+        ], blocks: [.init(kind: .paragraph, text: "body")], footnotes: [])
+        XCTAssertEqual(MarkdownDocumentRenderer.render(pages: [original]), "[PDF p. 1]\n\nfirst\nsecond\n\n## 1. 문제제기\n\nthird\n\nbody\n")
+    }
+
     private func page(_ number: Int, printed: Int? = nil, candidates: [String] = [], text: String? = nil,
                       blocks: [MarkdownPage.Block] = [], notes: [MarkdownPage.Footnote] = []) -> MarkdownPage {
-        MarkdownPage(pdfPage: number, printedPage: printed, topCandidates: candidates,
+        MarkdownPage(pdfPage: number, printedPage: printed, topCandidates: candidates.map { .init(kind: .paragraph, text: $0) },
                      blocks: blocks + (text.map { [.init(kind: .paragraph, text: $0)] } ?? []), footnotes: notes)
     }
 

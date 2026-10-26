@@ -56,6 +56,7 @@ enum MarkdownPageAnalyzer {
     static func analyze(pdfPage: Int, regions: [LayoutRegion], lines: [LayoutLine],
                         recognizeCrop: (CGRect) throws -> [LayoutLine],
                         recognizeTable: (CGRect) throws -> String?) rethrows -> MarkdownPage {
+        let lines = readingOrder(lines)
         let content = regions.indices.filter { !discarded.contains(regions[$0].label) && regions[$0].label != "number" }
         let heights = lines.map { $0.rect.height }.sorted()
         let median = heights.isEmpty ? 0 : heights[(heights.count - 1) / 2]
@@ -76,13 +77,13 @@ enum MarkdownPageAnalyzer {
         }
         for index in content where regions[index].label != "table" && assigned[index].isEmpty {
             guard !lines.contains(where: { contains(regions[index].rect, centerOf: $0.rect) }) else { continue }
-            assigned[index] = try recognizeCrop(padded(regions[index].rect)).filter {
+            assigned[index] = readingOrder(try recognizeCrop(padded(regions[index].rect))).filter {
                 median == 0 || $0.rect.height >= 0.6 * median
             }
         }
         var printedPage: Int?
         for region in regions where region.label == "number" {
-            let text = try recognizeCrop(padded(region.rect)).map(\.text).joined(separator: " ")
+            let text = readingOrder(try recognizeCrop(padded(region.rect))).map(\.text).joined(separator: " ")
             if printedPage == nil, let match = firstMatch("(?<![0-9])([0-9]{1,5})(?![0-9])", in: text) {
                 printedPage = Int(match.1)
             }
@@ -91,7 +92,7 @@ enum MarkdownPageAnalyzer {
         var corrected: Set<Int> = []
         for index in content.sorted(by: { regions[$0].rect.minY == regions[$1].rect.minY ? $0 > $1 : regions[$0].rect.minY > regions[$1].rect.minY }) {
             if regions[index].label == "footnote" { continue }
-            if regions[index].label == "text", regions[index].rect.midY > 0.5,
+            if ["text", "reference_content"].contains(regions[index].label), regions[index].rect.midY > 0.5,
                let first = assigned[index].first?.text,
                firstMatch("^\\s*\\(?[0-9]{1,3}\\)", in: first) != nil {
                 corrected.insert(index)
@@ -100,14 +101,21 @@ enum MarkdownPageAnalyzer {
         if content.contains(where: { !footnoteIndices.contains($0) && !corrected.contains($0) }) {
             footnoteIndices.formUnion(corrected)
         }
-        let anchors = content.filter { !footnoteIndices.contains($0) }
-        var topCandidates: [String] = []
+        let topRegion = content.min { regions[$0].rect.minY < regions[$1].rect.minY }.flatMap { index -> Int? in
+            let region = regions[index]
+            guard ["paragraph_title", "text"].contains(region.label), region.rect.midY < 0.14,
+                  assigned[index].count == 1,
+                  assigned[index][0].text.rangeOfCharacter(from: CharacterSet(charactersIn: "0123456789")) != nil else { return nil }
+            return index
+        }
+        let anchors = content.filter { !footnoteIndices.contains($0) && $0 != topRegion }
+        var topLines: [LayoutLine] = []
         var insertions: [(anchor: Int?, lines: [LayoutLine])] = []
         let minY = content.map { regions[$0].rect.minY }.min()
         let maxY = content.map { regions[$0].rect.maxY }.max()
         for line in unassigned {
             if let minY, line.rect.midY < minY && line.rect.midY < 0.14 {
-                topCandidates.append(line.text)
+                topLines.append(line)
                 continue
             }
             if let maxY, line.rect.midY > maxY && line.rect.midY > 0.86,
@@ -122,6 +130,13 @@ enum MarkdownPageAnalyzer {
             if let last = insertions.indices.last, insertions[last].anchor == anchor {
                 insertions[last].lines.append(line)
             } else { insertions.append((anchor, [line])) }
+        }
+        if let topRegion {
+            topLines.append(assigned[topRegion][0])
+        }
+        let topCandidates: [MarkdownPage.Block] = readingOrder(topLines).map { line in
+            let heading = topRegion.map { regions[$0].label == "paragraph_title" && assigned[$0][0] == line } ?? false
+            return .init(kind: heading ? headingKind(line.text) : .paragraph, text: line.text)
         }
         var blocks: [MarkdownPage.Block] = []
         func appendInsertions(after anchor: Int?) {
@@ -141,7 +156,7 @@ enum MarkdownPageAnalyzer {
                 kind = .table
             } else if region.label == "doc_title" || region.label == "paragraph_title" {
                 text = assigned[index].map(\.text).joined(separator: " ")
-                kind = region.label == "doc_title" ? .title : .heading
+                kind = region.label == "doc_title" ? .title : headingKind(text)
             } else {
                 text = paragraph(assigned[index])
                 kind = .paragraph
@@ -153,19 +168,59 @@ enum MarkdownPageAnalyzer {
         }
         let footnotes: [MarkdownPage.Footnote] = footnoteIndices.sorted {
             regions[$0].rect.minY == regions[$1].rect.minY ? $0 < $1 : regions[$0].rect.minY < regions[$1].rect.minY
-        }.compactMap { index in
-            let text = assigned[index].map(\.text).joined(separator: "\n").replacingOccurrences(of: "^\\s+", with: "", options: .regularExpression)
-            guard !text.isEmpty else { return nil }
-            for pattern in ["^\\(([0-9]{1,3})\\)\\s*", "^([0-9]{1,3})\\)\\s*", "^([0-9]{1,3})\\s+", "^([*†‡])\\s*"] {
-                if let match = firstMatch(pattern, in: text) {
-                    let remainder = String(text[match.0.upperBound...])
-                    return remainder.isEmpty ? nil : .init(marker: match.1, text: remainder)
+        }.flatMap { index -> [MarkdownPage.Footnote] in
+            var groups: [[LayoutLine]] = []
+            for line in assigned[index] {
+                if let current = groups.last,
+                   let match = firstMatch("^\\s*\\(?([0-9]{1,3})\\)", in: line.text),
+                   let next = Int(match.1) {
+                    let marker = parseFootnote(current).marker.flatMap(Int.init)
+                    if marker == nil || next == marker! + 1 {
+                        groups.append([line])
+                        continue
+                    }
                 }
+                if groups.isEmpty { groups.append([line]) } else { groups[groups.count - 1].append(line) }
             }
-            return .init(marker: nil, text: text)
+            return groups.map(parseFootnote).filter {
+                !$0.text.isEmpty && ($0.text.rangeOfCharacter(from: .letters) != nil
+                    || $0.text.filter({ !$0.isWhitespace }).count > 2)
+            }
         }
         return MarkdownPage(pdfPage: pdfPage, printedPage: printedPage, topCandidates: topCandidates,
                             blocks: blocks, footnotes: footnotes)
+    }
+
+    private static func headingKind(_ text: String) -> MarkdownPage.Block.Kind {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .range(of: "다\\.\\s*(\\(?[0-9]{1,3}\\))?$", options: .regularExpression) == nil ? .heading : .paragraph
+    }
+
+    private static func readingOrder(_ lines: [LayoutLine]) -> [LayoutLine] {
+        var rows: [[LayoutLine]] = []
+        for line in lines.sorted(by: { $0.rect.midY < $1.rect.midY }) {
+            if let first = rows.last?.first,
+               abs(line.rect.midY - first.rect.midY) < 0.5 * min(line.rect.height, first.rect.height) {
+                rows[rows.count - 1].append(line)
+            } else {
+                rows.append([line])
+            }
+        }
+        return rows.flatMap { $0.sorted { $0.rect.minX < $1.rect.minX } }
+    }
+
+    private static func parseFootnote(_ lines: [LayoutLine]) -> MarkdownPage.Footnote {
+        var text = lines.map(\.text).joined(separator: "\n")
+            .replacingOccurrences(of: "^\\s+", with: "", options: .regularExpression)
+        var marker: String?
+        for pattern in ["^\\(([0-9]{1,3})\\)\\s*", "^([0-9]{1,3})\\)\\s*", "^([0-9]{1,3})\\s+", "^([0-9]{1,3})(?=[A-Z\"“])", "^([*†‡])\\s*"] {
+            if let match = firstMatch(pattern, in: text) {
+                marker = match.1
+                text = String(text[match.0.upperBound...])
+                break
+            }
+        }
+        return .init(marker: marker, text: text)
     }
 
     private static func contains(_ rect: CGRect, centerOf line: CGRect) -> Bool {

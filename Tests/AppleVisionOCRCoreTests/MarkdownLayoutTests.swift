@@ -16,6 +16,72 @@ final class MarkdownLayoutTests: XCTestCase {
         MarkdownPageAnalyzer.analyze(pdfPage: 3, regions: regions, lines: lines,
                                         recognizeCrop: crop, recognizeTable: table)
     }
+    func testReadingRowsOrderOriginalCropUnassignedAndFootnoteLines() {
+        let shuffled = [line("right", 0.6, 0.249), line("next", 0.2, 0.28), line("left", 0.2, 0.25)]
+        XCTAssertEqual(analyze([region()], shuffled).blocks.map(\.text), ["left\nright\nnext"])
+        XCTAssertEqual(analyze([region()], [], crop: { _ in shuffled }).blocks.map(\.text), ["left\nright\nnext"])
+        XCTAssertEqual(analyze([], shuffled).blocks.map(\.text), ["left\nright\nnext"])
+        XCTAssertEqual(analyze([region("footnote")], shuffled).footnotes.map(\.text), ["left\nright\nnext"])
+        let notes = analyze([region("footnote")], [line("2017), 63.", 0.2, 0.29), line("30) Krs Fiuser, ...")])
+        XCTAssertEqual(notes.footnotes, [.init(marker: "30", text: "Krs Fiuser, ...\n2017), 63.")])
+        let chain = [line("third", 0.1, 0.266), line("second", 0.2, 0.258), line("first", 0.3, 0.25)]
+        XCTAssertEqual(analyze([], chain).blocks.map(\.text), ["second\nfirst\nthird"])
+    }
+
+    func testFootnoteRegionSplitsContinuationAndSequentialMarkersOnly() {
+        let result = analyze([region("footnote")], [
+            line("2017), 63.", 0.2, 0.33), line("30) Krs Fiuser, ...", 0.2, 0.29),
+            line("...1993), 211.", 0.2, 0.25)
+        ])
+        XCTAssertEqual(result.footnotes, [.init(marker: nil, text: "...1993), 211."),
+                                       .init(marker: "30", text: "Krs Fiuser, ...\n2017), 63.")])
+        let sequential = analyze([region("footnote")], [line("29) first"), line("30) next", 0.2, 0.29), line("32) retained", 0.2, 0.33)])
+        XCTAssertEqual(sequential.footnotes, [.init(marker: "29", text: "first"), .init(marker: "30", text: "next\n32) retained")])
+        let symbol = analyze([region("footnote")], [line("* first"), line("30) next", 0.2, 0.29)])
+        XCTAssertEqual(symbol.footnotes.map(\.marker), ["*", "30"])
+    }
+
+    func testBottomReferenceContentBecomesFootnote() {
+        let result = analyze([region(), region("reference_content", 0.1, 0.7, 0.8, 0.1)],
+                             [line("body"), line("47) Ronald Bamett, ...", 0.2, 0.72)])
+        XCTAssertEqual(result.footnotes, [.init(marker: "47", text: "Ronald Bamett, ...")])
+        XCTAssertEqual(result.blocks.map(\.text), ["body"])
+    }
+
+    func testFootnoteMarkerAttachedToLatinAuthorPreservesYears() {
+        for (input, marker, text) in [("1Sidney Greidanus, Preaching Christ ...", "1", "Sidney Greidanus, Preaching Christ ..."),
+                                      ("1990년대에", nil, "1990년대에"), ("2017), 63.", nil, "2017), 63.")] {
+            XCTAssertEqual(analyze([region("footnote")], [line(input)]).footnotes, [.init(marker: marker, text: text)])
+        }
+    }
+
+    func testFootnoteNoiseSkipsTinyNonlettersAfterParsing() {
+        for input in ["§", "1^", "* §", "2) ^"] {
+            XCTAssertTrue(analyze([region("footnote")], [line(input)]).footnotes.isEmpty, input)
+        }
+        for input in ["2017), 63.", "가", "A"] {
+            XCTAssertEqual(analyze([region("footnote")], [line(input)]).footnotes.map(\.text), [input])
+        }
+    }
+
+    func testSentenceEndingHeadingBecomesParagraph() {
+        for input in ["조치를 취해야 할 것이다.24)", "조치를 취해야 할 것이다. (24)", "조치를 취해야 할 것이다.  "] {
+            XCTAssertEqual(analyze([region("paragraph_title")], [line(input)]).blocks, [.init(kind: .paragraph, text: input)])
+            let top = analyze([region("paragraph_title", 0.1, 0.08, 0.8, 0.04)], [line(input, 0.2, 0.09)])
+            XCTAssertEqual(top.topCandidates + top.blocks, [.init(kind: .paragraph, text: input)])
+        }
+        XCTAssertEqual(analyze([region("paragraph_title")], [line("1. 문제제기")]).blocks.first?.kind, .heading)
+    }
+
+    func testTopContentCandidatePreservesKindAndUnassignedReadingOrder() {
+        let result = analyze([region("paragraph_title", 0.1, 0.08, 0.8, 0.04), region()],
+                             [line("body"), line("722• 신학과 실천(Theology and Praxis)", 0.2, 0.09), line("top", 0.2, 0.03)])
+        XCTAssertEqual(result.topCandidates, [.init(kind: .paragraph, text: "top"), .init(kind: .heading, text: "722• 신학과 실천(Theology and Praxis)")])
+        XCTAssertEqual(result.blocks.map(\.text), ["body"])
+        let heading = analyze([region("paragraph_title", 0.1, 0.08, 0.8, 0.04)], [line("1. 문제제기", 0.2, 0.09)])
+        XCTAssertEqual(heading.topCandidates, [.init(kind: .heading, text: "1. 문제제기")])
+    }
+
     private func decode(_ logits: [Float], boxes: [Float]? = nil, order: [Float]? = nil,
                         classes: Int = 2, threshold: Float = 0.4) -> [LayoutRegion] {
         let count = logits.count / classes
@@ -67,7 +133,7 @@ final class MarkdownLayoutTests: XCTestCase {
     }
     func testUnassignedTopLineBecomesCandidate() {
         let result = analyze([region()], [line("running head", 0.2, 0.08), line("body")])
-        XCTAssertEqual(result.topCandidates, ["running head"])
+        XCTAssertEqual(result.topCandidates, [.init(kind: .paragraph, text: "running head")])
         XCTAssertEqual(result.blocks.map(\.text), ["body"])
     }
     func testBottomLargeLogoDropsButNormalLineRemains() {

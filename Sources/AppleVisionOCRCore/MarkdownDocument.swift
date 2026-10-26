@@ -3,7 +3,7 @@ import Foundation
 struct MarkdownPage: Codable, Equatable {
     var pdfPage: Int
     var printedPage: Int?
-    var topCandidates: [String]
+    var topCandidates: [Block]
     var blocks: [Block]
     var footnotes: [Footnote]
 
@@ -55,20 +55,33 @@ enum MarkdownDocumentRenderer {
         let originalNumbers = Dictionary(uniqueKeysWithValues: pages.compactMap { page in
             page.printedPage.map { (page.pdfPage, $0) }
         })
+        var correctedNumbers = originalNumbers
+        for page in pages {
+            var counts: [Int: Int] = [:]
+            for neighbor in (page.pdfPage - 2)...(page.pdfPage + 2) where neighbor != page.pdfPage {
+                if let printed = originalNumbers[neighbor] { counts[printed - neighbor, default: 0] += 1 }
+            }
+            if let highest = counts.values.max(), highest >= 2 {
+                let winners = counts.filter { $0.value == highest }
+                if winners.count == 1, let offset = winners.first?.key {
+                    correctedNumbers[page.pdfPage] = page.pdfPage + offset
+                }
+            }
+        }
         var definitions: [(label: String, text: String)] = []
         var usedLabels: Set<String> = []
         var lastDefinitionByPage: [Int: Int] = [:]
         var renderedPages: [String] = []
 
         for page in pages {
-            var printedPage = page.printedPage
+            var printedPage = correctedNumbers[page.pdfPage]
             let expectedNumbers = Set([
-                page.printedPage,
-                originalNumbers[page.pdfPage - 1].map { $0 + 1 },
-                originalNumbers[page.pdfPage + 1].map { $0 - 1 }
+                correctedNumbers[page.pdfPage],
+                correctedNumbers[page.pdfPage - 1].map { $0 + 1 },
+                correctedNumbers[page.pdfPage + 1].map { $0 - 1 }
             ].compactMap { $0 })
             let candidates = page.topCandidates.filter { candidate in
-                let numbers = candidate.components(separatedBy: CharacterSet(charactersIn: "0123456789").inverted)
+                let numbers = candidate.text.components(separatedBy: CharacterSet(charactersIn: "0123456789").inverted)
                 guard let number = numbers.compactMap({ Int($0) }).first(where: { expectedNumbers.contains($0) }) else {
                     return true
                 }
@@ -78,10 +91,13 @@ enum MarkdownDocumentRenderer {
                 return false
             }
             var marker = printedPage.map { "[p. \($0)]" } ?? "[PDF p. \(page.pdfPage)]"
-            var blocks = page.blocks
-            if !candidates.isEmpty {
-                blocks.insert(.init(kind: .paragraph, text: candidates.joined(separator: "\n")), at: 0)
+            var blocks: [MarkdownPage.Block] = []
+            for candidate in candidates {
+                if candidate.kind == .paragraph, blocks.last?.kind == .paragraph {
+                    blocks[blocks.count - 1].text += "\n" + candidate.text
+                } else { blocks.append(candidate) }
             }
+            blocks.append(contentsOf: page.blocks)
 
             for (index, footnote) in page.footnotes.enumerated() {
                 let ordinal = index + 1

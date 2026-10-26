@@ -130,7 +130,7 @@ final class SplitProcessOCRRunnerTests: XCTestCase {
         let first = MarkdownPage(pdfPage: 1, printedPage: 10, topCandidates: [],
                                  blocks: [.init(kind: .paragraph, text: "본문1)")],
                                  footnotes: [.init(marker: "1", text: "첫 줄")])
-        let second = MarkdownPage(pdfPage: 2, printedPage: nil, topCandidates: ["11 머리말"],
+        let second = MarkdownPage(pdfPage: 2, printedPage: nil, topCandidates: [.init(kind: .paragraph, text: "11 머리말")],
                                   blocks: [.init(kind: .paragraph, text: "다음 본문")],
                                   footnotes: [.init(marker: nil, text: "이어진 줄")])
         let chunks = [first, second].enumerated().map { directory.appendingPathComponent("chunk-\($0.offset).json") }
