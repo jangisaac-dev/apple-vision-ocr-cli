@@ -122,6 +122,7 @@ enum VOCRStrings {
     static let checkboxExtractText = VOCRLocalizedString(english: "Extract TXT", korean: "TXT 추출")
     static let checkboxInsertPageSeparators = VOCRLocalizedString(english: "Insert page separators", korean: "Page 구분자 넣기")
     static let checkboxGenerateSearchablePDF = VOCRLocalizedString(english: "Generate Searchable PDF", korean: "Searchable PDF 생성")
+    static let checkboxMarkdownLayout = VOCRLocalizedString(english: "Markdown (layout)", korean: "Markdown (레이아웃 구분)")
     static let checkboxDisableLanguageCorrection = VOCRLocalizedString(
         english: "Disable language correction (Speed first)",
         korean: "언어 보정 끄기 (속도 우선)"
@@ -150,8 +151,8 @@ enum VOCRStrings {
     static let popupRenderScaleFastDraft = VOCRLocalizedString(english: "Fast draft (1.25x)", korean: "빠른 초안 (1.25x)")
     static let placeholderNoPDFFiles = VOCRLocalizedString(english: "No PDF files were provided.", korean: "PDF 파일이 전달되지 않았습니다.")
     static let validationMissingOutput = VOCRLocalizedString(
-        english: "Select at least one of Extract TXT or Generate Searchable PDF.",
-        korean: "TXT 추출 또는 Searchable PDF 생성 중 하나 이상을 선택하세요."
+        english: "Select Extract TXT, Generate Searchable PDF, or Markdown (layout).",
+        korean: "TXT 추출, Searchable PDF 생성 또는 Markdown (레이아웃 구분)을 선택하세요."
     )
     static func previewGeneratedFiles(_ files: String) -> String {
         language == .english ? "Generated files: \(files)" : "생성 파일: \(files)"
@@ -247,6 +248,7 @@ This avoids duplicate selection of existing searchable text. The original PDF is
         "checkboxExtractText": checkboxExtractText,
         "checkboxInsertPageSeparators": checkboxInsertPageSeparators,
         "checkboxGenerateSearchablePDF": checkboxGenerateSearchablePDF,
+        "checkboxMarkdownLayout": checkboxMarkdownLayout,
         "checkboxDisableLanguageCorrection": checkboxDisableLanguageCorrection,
         "checkboxRunInBackground": checkboxRunInBackground,
         "buttonStart": buttonStart,

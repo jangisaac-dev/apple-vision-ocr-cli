@@ -22,13 +22,19 @@ cp "$ROOT/scripts/install-vocr-quick-action.sh" \
   "$ROOT/scripts/vocr-finder-action.sh" \
   "$ROOT/scripts/apple-vision-ocr-finder-action.sh" \
   "$ROOT/LICENSE" \
+  "$ROOT/THIRD_PARTY_NOTICES.md" \
   "$STAGE/"
 
 cat > "$STAGE/Install.command" <<'EOF'
 #!/bin/zsh
 set -euo pipefail
 cd "$(dirname "$0")"
-./install-vocr-quick-action.sh
+if ! ./install-vocr-quick-action.sh; then
+  echo "설치에 실패했습니다. 위 오류를 확인하세요."
+  echo "Installation failed. Check the error above."
+  read -k 1 "?아무 키나 누르면 창을 닫습니다 / Press any key to close."
+  exit 1
+fi
 echo
 echo "설치 완료. Finder에서 PDF를 선택하고 우클릭 > 빠른 동작 > Apple Vision OCR을 실행하세요."
 echo "Installed. In Finder, select PDFs, right-click, then Quick Actions > Apple Vision OCR."
@@ -39,7 +45,9 @@ cat > "$STAGE/README.txt" <<EOF
 VOCR $VERSION (Apple Vision OCR) - macOS $ARCH
 
 요구 사항 / Requirements
-- macOS 13 이상, Apple Silicon Mac (arm64)
+- macOS 26 이상, Apple Silicon Mac (arm64) / macOS 26 or later, Apple Silicon Mac (arm64)
+- macOS 13–25: v1.3.1 https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/tag/v1.3.1
+- 레이아웃 모델은 VOCR.app에 포함됩니다. / The layout model is bundled in VOCR.app.
 - 빌드 도구(Xcode)는 필요 없습니다. / No Xcode or Swift toolchain needed.
 
 설치 / Install

@@ -26,6 +26,7 @@ struct VOCRJobOutput {
     let inputURL: URL
     let pdfOutputURL: URL?
     let textOutputURL: URL?
+    let markdownOutputURL: URL?
 }
 
 final class OCRJobController {
@@ -202,7 +203,8 @@ final class OCRJobController {
                         recognitionLevel: recognitionLevel,
                         pageParallelism: currentParallelism(),
                         renderScale: renderScale,
-                        usesLanguageCorrection: usesLanguageCorrection
+                        usesLanguageCorrection: usesLanguageCorrection,
+                        markdownOutputURL: job.output.markdownOutputURL
                     )
 
                     log(VOCRStrings.logFileStarted(job.inputURL.lastPathComponent))
@@ -290,6 +292,9 @@ final class OCRJobController {
     }
 
     private func splitOutput(for output: VOCRJobOutput, selection: OCRJobOutputSelection) throws -> SplitProcessOCRRunner.Output {
+        if selection.writesMarkdown, let markdownOutputURL = output.markdownOutputURL {
+            return .markdown(markdownOutputURL)
+        }
         if selection.writesPDF,
            selection.writesText,
            let pdfOutputURL = output.pdfOutputURL,
@@ -372,6 +377,7 @@ final class OCRJobController {
         return try files.enumerated().map { index, inputURL in
             let pdfOutputURL: URL?
             let textOutputURL: URL?
+            let markdownOutputURL: URL?
 
             if selection.writesPDF {
                 let defaultURL = try OutputPathResolver.defaultOutputURL(for: inputURL)
@@ -387,7 +393,19 @@ final class OCRJobController {
                 textOutputURL = nil
             }
 
-            let output = VOCRJobOutput(inputURL: inputURL, pdfOutputURL: pdfOutputURL, textOutputURL: textOutputURL)
+            if selection.writesMarkdown {
+                let defaultURL = try OutputPathResolver.defaultMarkdownOutputURL(for: inputURL)
+                markdownOutputURL = availableURL(defaultURL, reservedPaths: &reservedPaths)
+            } else {
+                markdownOutputURL = nil
+            }
+
+            let output = VOCRJobOutput(
+                inputURL: inputURL,
+                pdfOutputURL: pdfOutputURL,
+                textOutputURL: textOutputURL,
+                markdownOutputURL: markdownOutputURL
+            )
             return PreparedJob(index: index, inputURL: inputURL, output: output)
         }
     }

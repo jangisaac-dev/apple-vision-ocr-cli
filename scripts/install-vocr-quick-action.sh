@@ -1,6 +1,12 @@
 #!/bin/zsh
 set -euo pipefail
 
+if (( ${$(sw_vers -productVersion)%%.*} < 26 )); then
+  echo "VOCR 2.x requires macOS 26 or later. macOS 13–25 users: use v1.3.1 https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/tag/v1.3.1" >&2
+  echo "VOCR 2.x는 macOS 26 이상이 필요합니다. macOS 13–25에서는 v1.3.1을 사용하세요: https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/tag/v1.3.1" >&2
+  exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_INSTALL_DIR="${VOCR_APP_INSTALL_DIR:-$HOME/Applications}"
 BIN_DIR="${VOCR_BIN_DIR:-$HOME/.local/bin}"
@@ -30,11 +36,11 @@ xattr -dr com.apple.quarantine "$APP.installing" 2>/dev/null || true
 rm -rf "$APP"
 mv "$APP.installing" "$APP"
 
-cp "$APP/Contents/MacOS/apple-vision-ocr" "$BIN_DIR/apple-vision-ocr"
+ln -sf "$APP/Contents/MacOS/apple-vision-ocr" "$BIN_DIR/apple-vision-ocr"
 cp "$WRAPPER_SOURCE_DIR/vocr-finder-action.sh" "$BIN_DIR/vocr-finder-action"
 cp "$WRAPPER_SOURCE_DIR/apple-vision-ocr-finder-action.sh" "$BIN_DIR/apple-vision-ocr-finder-action"
-chmod 755 "$BIN_DIR/apple-vision-ocr" "$BIN_DIR/vocr-finder-action" "$BIN_DIR/apple-vision-ocr-finder-action"
-xattr -d com.apple.quarantine "$BIN_DIR/apple-vision-ocr" "$BIN_DIR/vocr-finder-action" "$BIN_DIR/apple-vision-ocr-finder-action" 2>/dev/null || true
+chmod 755 "$BIN_DIR/vocr-finder-action" "$BIN_DIR/apple-vision-ocr-finder-action"
+xattr -d com.apple.quarantine "$BIN_DIR/vocr-finder-action" "$BIN_DIR/apple-vision-ocr-finder-action" 2>/dev/null || true
 
 # The workflow command is shell code inside XML: shell-quote the paths, then XML-escape.
 COMMAND="#!/bin/zsh

@@ -44,6 +44,18 @@ final class OCRJobOutputSelectionTests: XCTestCase {
         XCTAssertTrue(selection.outputMode.includesPageBreaks)
     }
 
+    func testAllowsMarkdownOnly() throws {
+        let selection = try OCRJobOutputSelection(
+            writesText: false,
+            writesPDF: false,
+            includesPageBreaks: false,
+            writesMarkdown: true
+        )
+
+        XCTAssertTrue(selection.writesMarkdown)
+        XCTAssertEqual(selection.outputMode, .markdown)
+    }
+
     func testRejectsPageBreaksWithoutText() {
         XCTAssertThrowsError(try OCRJobOutputSelection(
             writesText: false,

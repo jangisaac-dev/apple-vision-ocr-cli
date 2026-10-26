@@ -111,7 +111,7 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // Test seam: VOCR_HEADLESS triggers an automatic run. "1"/"pdf" → searchable PDF;
-    // "txt-pagebreaks" → page-divided TXT (split page-break path);
+    // "txt-pagebreaks" → page-divided TXT (split page-break path); "md" → Markdown only;
     // "cancel" → cancel mid-run; "pause" → pause then resume mid-run.
     private static var headlessMode: String? {
         guard let value = ProcessInfo.processInfo.environment["VOCR_HEADLESS"], !value.isEmpty else {
@@ -124,10 +124,12 @@ final class VOCRAppDelegate: NSObject, NSApplicationDelegate {
         do {
             let mode = Self.headlessMode ?? "1"
             let wantsTextPageBreaks = mode == "txt-pagebreaks"
+            let wantsMarkdown = mode == "md"
             let selection = try OCRJobOutputSelection(
                 writesText: wantsTextPageBreaks,
-                writesPDF: !wantsTextPageBreaks,
-                includesPageBreaks: wantsTextPageBreaks
+                writesPDF: !wantsTextPageBreaks && !wantsMarkdown,
+                includesPageBreaks: wantsTextPageBreaks,
+                writesMarkdown: wantsMarkdown
             )
             let parallelism = try OCRJobParallelism(count: VOCRWindowController.defaultWorkerCount)
             jobController.start(

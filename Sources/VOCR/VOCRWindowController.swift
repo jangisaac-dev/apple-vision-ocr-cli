@@ -27,6 +27,7 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
     private let textCheckbox = NSButton(checkboxWithTitle: VOCRStrings.checkboxExtractText.text, target: nil, action: nil)
     private let pageBreakCheckbox = NSButton(checkboxWithTitle: VOCRStrings.checkboxInsertPageSeparators.text, target: nil, action: nil)
     private let pdfCheckbox = NSButton(checkboxWithTitle: VOCRStrings.checkboxGenerateSearchablePDF.text, target: nil, action: nil)
+    private let markdownCheckbox = NSButton(checkboxWithTitle: VOCRStrings.checkboxMarkdownLayout.text, target: nil, action: nil)
     private let recognitionLevelPopup = NSPopUpButton()
     private let renderScalePopup = NSPopUpButton()
     private let disableLanguageCorrectionCheckbox = NSButton(checkboxWithTitle: VOCRStrings.checkboxDisableLanguageCorrection.text, target: nil, action: nil)
@@ -48,10 +49,10 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
         )
         window.title = "VOCR - Apple Vision OCR"
         window.isReleasedWhenClosed = false
-        window.center()
         super.init(window: window)
         window.delegate = self
         buildContent()
+        window.center()
         updateFileList()
         updateOutputControls()
         updateControls(for: .idle)
@@ -71,6 +72,9 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
         var lines = [VOCRStrings.logPlannedOutput(output.inputURL.lastPathComponent)]
         if let textOutputURL = output.textOutputURL {
             lines.append("TXT: \(textOutputURL.lastPathComponent)")
+        }
+        if let markdownOutputURL = output.markdownOutputURL {
+            lines.append("Markdown: \(markdownOutputURL.lastPathComponent)")
         }
         if let pdfOutputURL = output.pdfOutputURL {
             lines.append("PDF: \(pdfOutputURL.lastPathComponent)")
@@ -124,15 +128,22 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
         pdfCheckbox.target = self
         pdfCheckbox.action = #selector(outputCheckboxChanged)
         pdfCheckbox.state = .on
+        markdownCheckbox.target = self
+        markdownCheckbox.action = #selector(outputCheckboxChanged)
+        markdownCheckbox.state = .off
 
         let pageBreakStack = NSStackView(views: [spacer(width: 18), pageBreakCheckbox])
         pageBreakStack.orientation = .horizontal
         pageBreakStack.spacing = 0
 
-        let outputStack = NSStackView(views: [textCheckbox, pageBreakStack, pdfCheckbox])
+        let outputStack = NSStackView(views: [textCheckbox, pageBreakStack, pdfCheckbox, markdownCheckbox])
         outputStack.orientation = .vertical
         outputStack.alignment = .leading
         outputStack.spacing = 8
+        window?.setContentSize(NSSize(
+            width: 680,
+            height: 580 + markdownCheckbox.intrinsicContentSize.height + outputStack.spacing
+        ))
 
         let parallelismHeader = NSTextField(labelWithString: VOCRStrings.headerWorkerProcessCount.text)
         parallelismHeader.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
@@ -261,9 +272,11 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
         pauseButton.title = isPaused ? VOCRStrings.buttonResume.text : VOCRStrings.buttonPause.text
         cancelButton.isEnabled = isBusy
         quitButton.isEnabled = !isBusy
-        textCheckbox.isEnabled = !isBusy
-        pageBreakCheckbox.isEnabled = !isBusy && textCheckbox.state == .on
-        pdfCheckbox.isEnabled = !isBusy
+        let writesMarkdown = markdownCheckbox.state == .on
+        textCheckbox.isEnabled = !isBusy && !writesMarkdown
+        pageBreakCheckbox.isEnabled = !isBusy && !writesMarkdown && textCheckbox.state == .on
+        pdfCheckbox.isEnabled = !isBusy && !writesMarkdown
+        markdownCheckbox.isEnabled = !isBusy
         recognitionLevelPopup.isEnabled = !isBusy
         renderScalePopup.isEnabled = !isBusy
         disableLanguageCorrectionCheckbox.isEnabled = !isBusy
@@ -272,23 +285,28 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func updateOutputControls() {
+        if markdownCheckbox.state == .on {
+            textCheckbox.state = .off
+            pageBreakCheckbox.state = .off
+            pdfCheckbox.state = .off
+        }
         if textCheckbox.state != .on {
             pageBreakCheckbox.state = .off
         }
-        pageBreakCheckbox.isEnabled = currentState != .running && currentState != .paused && textCheckbox.state == .on
         outputPreviewField.stringValue = outputPreviewText()
         updateControls(for: currentState)
     }
 
     private var hasAnyOutputSelected: Bool {
-        textCheckbox.state == .on || pdfCheckbox.state == .on
+        textCheckbox.state == .on || pdfCheckbox.state == .on || markdownCheckbox.state == .on
     }
 
     private func outputSelection() throws -> OCRJobOutputSelection {
         try OCRJobOutputSelection(
             writesText: textCheckbox.state == .on,
             writesPDF: pdfCheckbox.state == .on,
-            includesPageBreaks: pageBreakCheckbox.state == .on
+            includesPageBreaks: pageBreakCheckbox.state == .on,
+            writesMarkdown: markdownCheckbox.state == .on
         )
     }
 
@@ -317,6 +335,9 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
         }
 
         var outputs: [String] = []
+        if markdownCheckbox.state == .on {
+            outputs.append("input.md")
+        }
         if textCheckbox.state == .on {
             outputs.append("input.txt")
         }
@@ -343,7 +364,10 @@ final class VOCRWindowController: NSWindowController, NSWindowDelegate {
         return view
     }
 
-    @objc private func outputCheckboxChanged() {
+    @objc private func outputCheckboxChanged(_ sender: NSButton) {
+        if sender === markdownCheckbox, markdownCheckbox.state == .off {
+            pdfCheckbox.state = .on
+        }
         updateOutputControls()
     }
 

@@ -19,11 +19,14 @@ swift build -c release --product apple-vision-ocr
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
+"$ROOT/scripts/fetch-layout-model.sh" >/dev/null
+
 cp "$ROOT/.build/release/VOCR" "$MACOS_DIR/VOCR"
 chmod 755 "$MACOS_DIR/VOCR"
 cp "$ROOT/.build/release/apple-vision-ocr" "$MACOS_DIR/apple-vision-ocr"
 chmod 755 "$MACOS_DIR/apple-vision-ocr"
 cp "$ROOT/assets/icon/VOCR.icns" "$RESOURCES_DIR/VOCR.icns"
+cp -R "${APPLE_VISION_OCR_MODEL_DIR:-$ROOT/.build/models}/PPDocLayoutV3.mlmodelc" "$RESOURCES_DIR/"
 
 cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -57,7 +60,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <key>CFBundleVersion</key>
   <string>5</string>
   <key>LSMinimumSystemVersion</key>
-  <string>13.0</string>
+  <string>26.0</string>
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>LSUIElement</key>
