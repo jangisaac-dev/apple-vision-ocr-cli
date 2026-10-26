@@ -10,7 +10,7 @@ protocol LayoutAnalyzing {
 public final class LayoutModel: LayoutAnalyzing {
     private let model: MLModel
     private let lock = NSLock()
-    public static let missingMessage = "layout model not found: set APPLE_VISION_OCR_LAYOUT_MODEL to PPDocLayoutV3.mlmodelc or run scripts/fetch-layout-model.sh"
+    public static let missingMessage = "layout model not found: set APPLE_VISION_OCR_LAYOUT_MODEL to PPDocLayoutV3.mlmodelc (from a source checkout: eval \"$(scripts/fetch-layout-model.sh)\"), or run the CLI installed with VOCR.app"
 
     public static func locate(environment: [String: String] = ProcessInfo.processInfo.environment,
                        executableURL: URL? = Bundle.main.executableURL) -> URL? {

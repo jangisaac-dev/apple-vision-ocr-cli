@@ -275,6 +275,6 @@ ls "$HOME/Library/Services/Apple Vision OCR.workflow"
 
 macOS 26 미만 버전 환경에서는 [v1.3.1](https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/tag/v1.3.1) 릴리스를 사용하세요.
 
-Markdown OCR 실행 중 종료 코드 4(`layout model not found`)가 발생하는 경우 `scripts/fetch-layout-model.sh`를 실행하여 모델을 빌드하거나, `APPLE_VISION_OCR_LAYOUT_MODEL` 환경 변수에 `PPDocLayoutV3.mlmodelc` 경로를 지정합니다. CLI 실행 파일은 `VOCR.app` 내부를 가리키는 심볼릭 링크 상태여야 번들 모델을 정상 탐색할 수 있습니다.
+Markdown OCR 실행 중 종료 코드 4(`layout model not found`)가 발생하는 경우 소스 체크아웃에서 `eval "$(scripts/fetch-layout-model.sh)"`를 실행하여 모델을 빌드하고 환경 변수를 설정하거나, `APPLE_VISION_OCR_LAYOUT_MODEL` 환경 변수에 `PPDocLayoutV3.mlmodelc` 경로를 지정합니다. CLI 실행 파일은 `VOCR.app` 내부를 가리키는 심볼릭 링크 상태여야 번들 모델을 정상 탐색할 수 있습니다.
 
 OCR 출력 파일이 이미 존재하는 경우 다른 `--output`, `--txt-output`, `--md-output` 경로를 지정합니다. CLI는 기존 파일을 덮어쓰지 않습니다.

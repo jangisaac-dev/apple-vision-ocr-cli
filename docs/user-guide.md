@@ -295,7 +295,7 @@ ls "$HOME/Library/Services/Apple Vision OCR.workflow"
 
 If running on macOS versions prior to macOS 26, use [v1.3.1](https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/tag/v1.3.1).
 
-If Markdown OCR fails with exit code 4 (`layout model not found`), compile the model by running `scripts/fetch-layout-model.sh` or set `APPLE_VISION_OCR_LAYOUT_MODEL` to the path of `PPDocLayoutV3.mlmodelc`. Note that the CLI binary must be run through its installed symlink into `VOCR.app` or have `APPLE_VISION_OCR_LAYOUT_MODEL` set.
+If Markdown OCR fails with exit code 4 (`layout model not found`), compile the model and set its environment variable by running `eval "$(scripts/fetch-layout-model.sh)"` from a source checkout, or set `APPLE_VISION_OCR_LAYOUT_MODEL` to the path of `PPDocLayoutV3.mlmodelc`. Note that the CLI binary must be run through its installed symlink into `VOCR.app` or have `APPLE_VISION_OCR_LAYOUT_MODEL` set.
 
 If OCR output already exists, choose a different `--output`, `--txt-output`, or `--md-output`
 path. The CLI refuses to overwrite existing files.
