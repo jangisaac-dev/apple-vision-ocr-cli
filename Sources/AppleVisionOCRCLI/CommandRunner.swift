@@ -40,9 +40,7 @@ public final class CommandRunner {
 
                 if options.dryRun {
                     if options.outputMode.writesMarkdown {
-                        guard LayoutModel.locate(environment: environment, executableURL: executableURL) != nil else {
-                            throw AppleVisionOCRError.visionFailure(LayoutModel.missingMessage)
-                        }
+                        _ = try LayoutModel.load(environment: environment, executableURL: executableURL)
                     }
                     if let outputURL = options.outputURL {
                         stdout(outputURL.path)

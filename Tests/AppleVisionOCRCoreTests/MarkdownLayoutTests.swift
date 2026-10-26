@@ -20,12 +20,12 @@ final class MarkdownLayoutTests: XCTestCase {
         let shuffled = [line("right", 0.6, 0.249), line("next", 0.2, 0.28), line("left", 0.2, 0.25)]
         XCTAssertEqual(analyze([region()], shuffled).blocks.map(\.text), ["left\nright\nnext"])
         XCTAssertEqual(analyze([region()], [], crop: { _ in shuffled }).blocks.map(\.text), ["left\nright\nnext"])
-        XCTAssertEqual(analyze([], shuffled).blocks.map(\.text), ["left\nright\nnext"])
+        XCTAssertEqual(analyze([], shuffled).blocks.map(\.text), ["right\nnext\nleft"])
         XCTAssertEqual(analyze([region("footnote")], shuffled).footnotes.map(\.text), ["left\nright\nnext"])
         let notes = analyze([region("footnote")], [line("2017), 63.", 0.2, 0.29), line("30) Krs Fiuser, ...")])
         XCTAssertEqual(notes.footnotes, [.init(marker: "30", text: "Krs Fiuser, ...\n2017), 63.")])
         let chain = [line("third", 0.1, 0.266), line("second", 0.2, 0.258), line("first", 0.3, 0.25)]
-        XCTAssertEqual(analyze([], chain).blocks.map(\.text), ["second\nfirst\nthird"])
+        XCTAssertEqual(analyze([], chain).blocks.map(\.text), ["third\nsecond\nfirst"])
     }
 
     func testFootnoteRegionSplitsContinuationAndSequentialMarkersOnly() {
@@ -36,7 +36,8 @@ final class MarkdownLayoutTests: XCTestCase {
         XCTAssertEqual(result.footnotes, [.init(marker: nil, text: "...1993), 211."),
                                        .init(marker: "30", text: "Krs Fiuser, ...\n2017), 63.")])
         let sequential = analyze([region("footnote")], [line("29) first"), line("30) next", 0.2, 0.29), line("32) retained", 0.2, 0.33)])
-        XCTAssertEqual(sequential.footnotes, [.init(marker: "29", text: "first"), .init(marker: "30", text: "next\n32) retained")])
+        XCTAssertEqual(sequential.footnotes, [.init(marker: "29", text: "first"), .init(marker: "30", text: "next"),
+                                            .init(marker: "32", text: "retained")])
         let symbol = analyze([region("footnote")], [line("* first"), line("30) next", 0.2, 0.29)])
         XCTAssertEqual(symbol.footnotes.map(\.marker), ["*", "30"])
     }
@@ -56,11 +57,46 @@ final class MarkdownLayoutTests: XCTestCase {
     }
 
     func testFootnoteNoiseSkipsTinyNonlettersAfterParsing() {
-        for input in ["§", "1^", "* §", "2) ^"] {
+        for input in ["§", "1^"] {
             XCTAssertTrue(analyze([region("footnote")], [line(input)]).footnotes.isEmpty, input)
         }
         for input in ["2017), 63.", "가", "A"] {
             XCTAssertEqual(analyze([region("footnote")], [line(input)]).footnotes.map(\.text), [input])
+        }
+    }
+
+    func testMarkedFootnotesPreserveShortNonletterText() {
+        for (input, marker, text) in [("1)42", "1", "42"), ("1)§1", "1", "§1"),
+                                      ("1) 42", "1", "42"), ("1) §1", "1", "§1"),
+                                      ("* §", "*", "§"), ("2) ^", "2", "^")] {
+            XCTAssertEqual(analyze([region("footnote")], [line(input)]).footnotes,
+                           [.init(marker: marker, text: text)], input)
+        }
+        XCTAssertTrue(analyze([region("footnote")], [line("1)")]).footnotes.isEmpty)
+    }
+
+    func testFootnoteRegionSplitsAllParsedNumericMarkerForms() {
+        for (first, next) in [("29) First", "30) Next"), ("(29) First", "(30) Next"),
+                              ("29 First", "30 Next"), ("29First", "30Next")] {
+            let result = analyze([region("footnote")], [line(first), line(next, 0.2, 0.29)])
+            XCTAssertEqual(result.footnotes, [.init(marker: "29", text: "First"),
+                                            .init(marker: "30", text: "Next")], next)
+            let continuation = analyze([region("footnote")], [line("continuation"), line(next, 0.2, 0.29)])
+            XCTAssertEqual(continuation.footnotes.map(\.marker), [nil, "30"], next)
+        }
+    }
+
+    func testParenthesizedFootnotesSplitIncreasingNumbersButKeepNestedLists() {
+        for (first, next) in [("29) First", "32) Next"), ("(29) First", "(32) Next")] {
+            XCTAssertEqual(analyze([region("footnote")], [line(first), line(next, 0.2, 0.29)]).footnotes,
+                           [.init(marker: "29", text: "First"), .init(marker: "32", text: "Next")])
+        }
+        let nested = analyze([region("footnote")], [line("29) First"), line("1) nested", 0.2, 0.29),
+                                                   line("2) nested next", 0.2, 0.33)])
+        XCTAssertEqual(nested.footnotes, [.init(marker: "29", text: "First\n1) nested\n2) nested next")])
+        for next in ["32 Next", "32Next", "29) repeated"] {
+            XCTAssertEqual(analyze([region("footnote")], [line("29) First"), line(next, 0.2, 0.29)]).footnotes,
+                           [.init(marker: "29", text: "First\n" + next)])
         }
     }
 
@@ -149,6 +185,11 @@ final class MarkdownLayoutTests: XCTestCase {
     func testNoRegionsProducesOneParagraph() {
         XCTAssertEqual(analyze([], [line("a"), line("b")]).blocks.map(\.text), ["a\nb"])
     }
+    func testNoRegionsPreservesVisionColumnReadingOrder() {
+        let result = analyze([], [line("L1", 0.1, 0.2), line("L2", 0.1, 0.3),
+                                  line("R1", 0.6, 0.2), line("R2", 0.6, 0.3)])
+        XCTAssertEqual(result.blocks.map(\.text), ["L1\nL2\nR1\nR2"])
+    }
     func testEmptyRegionReOCRUsesClampedPadding() {
         var crops: [CGRect] = []
         let result = analyze([region("text", 0, 0, 0.2, 0.2)], [], crop: {
@@ -168,6 +209,20 @@ final class MarkdownLayoutTests: XCTestCase {
         })
         XCTAssertEqual(calls, 0)
         XCTAssertEqual(result.blocks.count, 1)
+    }
+    func testReOCRFiltersPaddingNeighbourWithoutSuppressingRecovery() {
+        for label in ["text", "footnote"] {
+            var calls = 0
+            let neighbour = line("neighbour", 0.402, 0.25, 0.01)
+            let result = analyze([region(label, 0.2, 0.2, 0.2, 0.2)], [neighbour], crop: {
+                calls += 1
+                XCTAssertEqual($0.maxX, 0.41, accuracy: 0.000001)
+                return [self.line("recovered", 0.22, 0.25, 0.1), neighbour]
+            })
+            XCTAssertEqual(calls, 1, label)
+            XCTAssertEqual(result.blocks.map(\.text), label == "text" ? ["neighbour", "recovered"] : ["neighbour"])
+            XCTAssertEqual(result.footnotes.map(\.text), label == "footnote" ? ["recovered"] : [])
+        }
     }
     func testReOCRFiltersSmallFragmentsUsingOriginalMedian() {
         let result = analyze([region(), region("footnote", 0.1, 0.7, 0.8, 0.15)], [line("body")], crop: { _ in

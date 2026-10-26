@@ -56,7 +56,7 @@ enum MarkdownPageAnalyzer {
     static func analyze(pdfPage: Int, regions: [LayoutRegion], lines: [LayoutLine],
                         recognizeCrop: (CGRect) throws -> [LayoutLine],
                         recognizeTable: (CGRect) throws -> String?) rethrows -> MarkdownPage {
-        let lines = readingOrder(lines)
+        let lines = regions.isEmpty ? lines : readingOrder(lines)
         let content = regions.indices.filter { !discarded.contains(regions[$0].label) && regions[$0].label != "number" }
         let heights = lines.map { $0.rect.height }.sorted()
         let median = heights.isEmpty ? 0 : heights[(heights.count - 1) / 2]
@@ -78,7 +78,8 @@ enum MarkdownPageAnalyzer {
         for index in content where regions[index].label != "table" && assigned[index].isEmpty {
             guard !lines.contains(where: { contains(regions[index].rect, centerOf: $0.rect) }) else { continue }
             assigned[index] = readingOrder(try recognizeCrop(padded(regions[index].rect))).filter {
-                median == 0 || $0.rect.height >= 0.6 * median
+                contains(regions[index].rect.insetBy(dx: -0.005, dy: -0.004), centerOf: $0.rect)
+                    && (median == 0 || $0.rect.height >= 0.6 * median)
             }
         }
         var printedPage: Int?
@@ -172,10 +173,10 @@ enum MarkdownPageAnalyzer {
             var groups: [[LayoutLine]] = []
             for line in assigned[index] {
                 if let current = groups.last,
-                   let match = firstMatch("^\\s*\\(?([0-9]{1,3})\\)", in: line.text),
-                   let next = Int(match.1) {
+                   let next = parseFootnote([line]).marker.flatMap(Int.init) {
                     let marker = parseFootnote(current).marker.flatMap(Int.init)
-                    if marker == nil || next == marker! + 1 {
+                    let parenthesized = firstMatch("^\\s*\\(?[0-9]{1,3}\\)", in: line.text) != nil
+                    if marker.map({ parenthesized ? next > $0 : next == $0 + 1 }) ?? true {
                         groups.append([line])
                         continue
                     }
@@ -183,7 +184,7 @@ enum MarkdownPageAnalyzer {
                 if groups.isEmpty { groups.append([line]) } else { groups[groups.count - 1].append(line) }
             }
             return groups.map(parseFootnote).filter {
-                !$0.text.isEmpty && ($0.text.rangeOfCharacter(from: .letters) != nil
+                !$0.text.isEmpty && ($0.marker != nil || $0.text.rangeOfCharacter(from: .letters) != nil
                     || $0.text.filter({ !$0.isWhitespace }).count > 2)
             }
         }
@@ -232,7 +233,11 @@ enum MarkdownPageAnalyzer {
     }
 
     private static func paragraph(_ lines: [LayoutLine]) -> String {
-        lines.map(\.text).joined(separator: "\n").components(separatedBy: "\n")
+        paragraph(lines.map(\.text).joined(separator: "\n"))
+    }
+
+    static func paragraph(_ text: String) -> String {
+        text.components(separatedBy: "\n")
             .map { $0.hasPrefix("#") ? "\\" + $0 : $0 }.joined(separator: "\n")
     }
 

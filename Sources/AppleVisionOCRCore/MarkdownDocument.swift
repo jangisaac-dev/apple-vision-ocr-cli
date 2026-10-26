@@ -64,7 +64,13 @@ enum MarkdownDocumentRenderer {
             if let highest = counts.values.max(), highest >= 2 {
                 let winners = counts.filter { $0.value == highest }
                 if winners.count == 1, let offset = winners.first?.key, page.pdfPage + offset >= 1 {
-                    correctedNumbers[page.pdfPage] = page.pdfPage + offset
+                    let supportedBefore = originalNumbers.contains { $0.key < page.pdfPage
+                        && $0.key >= page.pdfPage - 2 && $0.value - $0.key == offset }
+                    let supportedAfter = originalNumbers.contains { $0.key > page.pdfPage
+                        && $0.key <= page.pdfPage + 2 && $0.value - $0.key == offset }
+                    if page.printedPage == nil || (supportedBefore && supportedAfter) {
+                        correctedNumbers[page.pdfPage] = page.pdfPage + offset
+                    }
                 }
             }
         }
@@ -81,8 +87,10 @@ enum MarkdownDocumentRenderer {
                 correctedNumbers[page.pdfPage + 1].map { $0 - 1 }
             ].compactMap { $0 }.filter { $0 >= 1 })
             let candidates = page.topCandidates.filter { candidate in
-                let numbers = candidate.text.components(separatedBy: CharacterSet(charactersIn: "0123456789").inverted)
-                guard let number = numbers.compactMap({ Int($0) }).first(where: { expectedNumbers.contains($0) }) else {
+                let text = candidate.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let number = expectedNumbers.sorted().first(where: { number in
+                    text.range(of: "^\(number)(?![0-9.)])|(?<![0-9])\(number)$", options: .regularExpression) != nil
+                }) else {
                     return true
                 }
                 if printedPage == nil {
@@ -93,6 +101,10 @@ enum MarkdownDocumentRenderer {
             var marker = printedPage.map { "[p. \($0)]" } ?? "[PDF p. \(page.pdfPage)]"
             var blocks: [MarkdownPage.Block] = []
             for candidate in candidates {
+                var candidate = candidate
+                if candidate.kind == .paragraph {
+                    candidate.text = MarkdownPageAnalyzer.paragraph(candidate.text)
+                }
                 if candidate.kind == .paragraph, blocks.last?.kind == .paragraph {
                     blocks[blocks.count - 1].text += "\n" + candidate.text
                 } else { blocks.append(candidate) }
@@ -166,7 +178,13 @@ enum MarkdownDocumentRenderer {
             for match in expression.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
                 guard let range = Range(match.range, in: text) else { continue }
                 let prefix = text[..<range.lowerBound].split(separator: "\n", omittingEmptySubsequences: false).last ?? ""
-                guard prefix.filter({ $0 == "(" }).count <= prefix.filter({ $0 == ")" }).count else { continue }
+                if prefix.last == ".", prefix.dropLast().last?.isNumber == true { continue }
+                var depth = 0
+                for character in prefix {
+                    if character == "(" { depth += 1 }
+                    if character == ")" { depth = max(0, depth - 1) }
+                }
+                guard depth == 0 else { continue }
                 blocks[index].text.replaceSubrange(range, with: "[^\(label)]")
                 return true
             }

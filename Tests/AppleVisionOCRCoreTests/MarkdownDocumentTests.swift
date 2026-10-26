@@ -183,6 +183,44 @@ final class MarkdownDocumentTests: XCTestCase {
         XCTAssertEqual(MarkdownDocumentRenderer.render(pages: [original]), "[PDF p. 1]\n\nfirst\nsecond\n\n## 1. 문제제기\n\nthird\n\nbody\n")
     }
 
+    func testHeaderPageNumbersOnlyMatchEligibleLineEdges() {
+        let chapter = MarkdownDocumentRenderer.render(pages: [page(1, printed: 1,
+            candidates: ["제 1장 서 론", "1. 서론", "1) 항목"])])
+        XCTAssertEqual(chapter, "[p. 1]\n\n제 1장 서 론\n1. 서론\n1) 항목\n")
+        for (number, header) in [(710, "710• 신학과 실천"), (438, "438 • 신학정론"),
+                                 (713, "동물윤리의 역사와 현대적 과제 • 713")] {
+            XCTAssertEqual(MarkdownDocumentRenderer.render(pages: [page(1, printed: number, candidates: [header])]),
+                           "[p. \(number)]\n")
+        }
+    }
+
+    func testUnmatchedClosingParenthesisDoesNotHideLaterOpenParenthesis() {
+        let text = MarkdownDocumentRenderer.render(pages: [page(1, text: "가) (표1) 참조. 본문1)",
+            notes: [.init(marker: "1", text: "각주")])])
+        XCTAssertTrue(text.contains("\n\n가) (표1) 참조. 본문[^1]\n\n"))
+        assertDefinitionsReferencedOnce(text)
+    }
+
+    func testPrintedPageRestartIsNotOverriddenByOneSidedNeighbors() {
+        XCTAssertEqual(MarkdownDocumentRenderer.render(pages: [page(1, printed: 100),
+            page(2, printed: 101), page(3, printed: 1)]), "[p. 100]\n\n[p. 101]\n\n[p. 1]\n")
+        let corrected = MarkdownDocumentRenderer.render(pages: [page(12, printed: 720), page(13, printed: 121),
+            page(14), page(15, printed: 723)])
+        XCTAssertTrue(corrected.contains("[p. 721]"))
+    }
+
+    func testSectionNumberIsNotMistakenForFootnoteReference() {
+        let text = MarkdownDocumentRenderer.render(pages: [page(1, text: "범위는 3.1) 절에서 다룬다. 끝났다.1) 다음",
+            notes: [.init(marker: "1", text: "각주")])])
+        XCTAssertTrue(text.contains("\n\n범위는 3.1) 절에서 다룬다. 끝났다.[^1] 다음\n\n"))
+        assertDefinitionsReferencedOnce(text)
+    }
+
+    func testRetainedTopParagraphEscapesMarkdownHeadingPrefix() {
+        XCTAssertEqual(MarkdownDocumentRenderer.render(pages: [page(1, candidates: ["# 본문"])]),
+                       "[PDF p. 1]\n\n\\# 본문\n")
+    }
+
     private func page(_ number: Int, printed: Int? = nil, candidates: [String] = [], text: String? = nil,
                       blocks: [MarkdownPage.Block] = [], notes: [MarkdownPage.Footnote] = []) -> MarkdownPage {
         MarkdownPage(pdfPage: number, printedPage: printed, topCandidates: candidates.map { .init(kind: .paragraph, text: $0) },

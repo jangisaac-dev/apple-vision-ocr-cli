@@ -403,10 +403,10 @@ public final class SearchablePDFPipeline {
                                         usesLanguageCorrection: options.usesLanguageCorrection)
                                     return Self.layoutLines(text).map { line in
                                         LayoutLine(text: line.text, rect: CGRect(
-                                            x: rect.minX + line.rect.minX * rect.width,
-                                            y: rect.minY + line.rect.minY * rect.height,
-                                            width: line.rect.width * rect.width,
-                                            height: line.rect.height * rect.height))
+                                            x: crop.rect.minX + line.rect.minX * crop.rect.width,
+                                            y: crop.rect.minY + line.rect.minY * crop.rect.height,
+                                            width: line.rect.width * crop.rect.width,
+                                            height: line.rect.height * crop.rect.height))
                                     }
                                 }, recognizeTable: { rect in
                                     try Self.checkCancellation(control)

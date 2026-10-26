@@ -88,7 +88,7 @@ final class CommandRunnerTests: XCTestCase {
         XCTAssertEqual(output, ["apple-vision-ocr \(CommandRunner.version)"])
     }
 
-    func testMarkdownDryRunRequiresModelAndPrintsMarkdownOrJSONPath() throws {
+    func testMarkdownDryRunRequiresModel() throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let input = directory.appendingPathComponent("input.pdf")
@@ -101,17 +101,32 @@ final class CommandRunnerTests: XCTestCase {
         XCTAssertEqual(missing.run(arguments: [input.path, "--md-only", "--dry-run"]), .visionFailure)
         XCTAssertTrue(output.isEmpty)
         XCTAssertEqual(errors, ["error: " + LayoutModel.missingMessage])
-        let model = directory.appendingPathComponent("model.mlmodelc")
-        try FileManager.default.createDirectory(at: model, withIntermediateDirectories: true)
-        let present = CommandRunner(stdout: { output.append($0) }, stderr: { errors.append($0) },
-                                    executableURL: executable,
-                                    environment: ["APPLE_VISION_OCR_LAYOUT_MODEL": model.path])
-        XCTAssertEqual(present.run(arguments: [input.path, "--md-only", "--dry-run"]), .success)
-        XCTAssertEqual(output, [input.deletingPathExtension().appendingPathExtension("md").path])
-        output = []
-        let pages = directory.appendingPathComponent("pages.json")
-        XCTAssertEqual(present.run(arguments: [input.path, "--md-pages-output", pages.path, "--dry-run"]), .success)
-        XCTAssertEqual(output, [pages.path])
+    }
+
+    func testMarkdownDryRunRejectsInvalidLayoutModels() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let input = directory.appendingPathComponent("input.pdf")
+        try makePDF(at: input, pageCount: 1)
+        let emptyModel = directory.appendingPathComponent("empty.mlmodelc")
+        try FileManager.default.createDirectory(at: emptyModel, withIntermediateDirectories: true)
+        let plainFile = directory.appendingPathComponent("plain.mlmodelc")
+        try Data("not a model".utf8).write(to: plainFile)
+
+        for model in [emptyModel, plainFile] {
+            for outputArguments in [["--md-only"], ["--md-pages-output", directory.appendingPathComponent("pages.json").path]] {
+                var output: [String] = []
+                var errors: [String] = []
+                let runner = CommandRunner(stdout: { output.append($0) }, stderr: { errors.append($0) },
+                                           executableURL: directory.appendingPathComponent("bin/apple-vision-ocr"),
+                                           environment: ["APPLE_VISION_OCR_LAYOUT_MODEL": model.path])
+
+                XCTAssertEqual(runner.run(arguments: [input.path] + outputArguments + ["--dry-run"]), .visionFailure)
+                XCTAssertTrue(output.isEmpty)
+                XCTAssertEqual(errors.count, 1)
+                XCTAssertTrue(errors.first?.hasPrefix("error: failed to load layout model:") == true)
+            }
+        }
     }
 
     private func makeTemporaryDirectory() throws -> URL {
