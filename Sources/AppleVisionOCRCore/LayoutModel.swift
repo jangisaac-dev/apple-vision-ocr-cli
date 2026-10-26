@@ -35,7 +35,8 @@ public final class LayoutModel: LayoutAnalyzing {
         }
         do {
             let configuration = MLModelConfiguration()
-            configuration.computeUnits = .all
+            // Vision OCR shares the Neural Engine: with 10 split workers, .all stalls ~10s on first layout prediction vs .cpuAndGPU ~0.2s; per-page cost is unchanged (measured 2026-10-27).
+            configuration.computeUnits = .cpuAndGPU
             return LayoutModel(model: try MLModel(contentsOf: url, configuration: configuration))
         } catch {
             throw AppleVisionOCRError.visionFailure("failed to load layout model: \(error.localizedDescription)")

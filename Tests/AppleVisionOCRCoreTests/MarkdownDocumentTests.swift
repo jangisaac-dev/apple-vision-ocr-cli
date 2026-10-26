@@ -167,6 +167,14 @@ final class MarkdownDocumentTests: XCTestCase {
         XCTAssertTrue(tied.contains("[p. 500]"))
     }
 
+    func testInferredPrintedPagesBeforePageOneKeepPDFMarkers() {
+        for followingPages in [[page(13, printed: 1)], [page(13, printed: 1), page(14, printed: 2)]] {
+            let text = MarkdownDocumentRenderer.render(pages: [page(12, candidates: ["0• 앞부분"])] + followingPages)
+            XCTAssertTrue(text.hasPrefix("[PDF p. 12]\n\n0• 앞부분\n\n[p. 1]\n"))
+            XCTAssertFalse(text.contains("[p. 0]"))
+        }
+    }
+
     func testTopCandidatesKeepHeadingsAndMergeOnlyConsecutiveParagraphs() {
         let original = MarkdownPage(pdfPage: 1, printedPage: nil, topCandidates: [
             .init(kind: .paragraph, text: "first"), .init(kind: .paragraph, text: "second"),

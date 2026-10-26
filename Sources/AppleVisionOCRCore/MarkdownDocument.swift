@@ -63,7 +63,7 @@ enum MarkdownDocumentRenderer {
             }
             if let highest = counts.values.max(), highest >= 2 {
                 let winners = counts.filter { $0.value == highest }
-                if winners.count == 1, let offset = winners.first?.key {
+                if winners.count == 1, let offset = winners.first?.key, page.pdfPage + offset >= 1 {
                     correctedNumbers[page.pdfPage] = page.pdfPage + offset
                 }
             }
@@ -79,7 +79,7 @@ enum MarkdownDocumentRenderer {
                 correctedNumbers[page.pdfPage],
                 correctedNumbers[page.pdfPage - 1].map { $0 + 1 },
                 correctedNumbers[page.pdfPage + 1].map { $0 - 1 }
-            ].compactMap { $0 })
+            ].compactMap { $0 }.filter { $0 >= 1 })
             let candidates = page.topCandidates.filter { candidate in
                 let numbers = candidate.text.components(separatedBy: CharacterSet(charactersIn: "0123456789").inverted)
                 guard let number = numbers.compactMap({ Int($0) }).first(where: { expectedNumbers.contains($0) }) else {
