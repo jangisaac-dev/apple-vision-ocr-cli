@@ -126,6 +126,8 @@ swift run apple-vision-ocr path/to/input.pdf --md-only --split-workers 4
 
 Markdown output is mutually exclusive with `--output`, `--txt`, `--txt-only`, `--txt-output`, and `--page-breaks` (exits with code 1). It works seamlessly with `--split-workers`, `--page-range`, `--lang`, `--recognition-level`, `--render-scale`, `--no-language-correction`, and `--dry-run`.
 
+Markdown takes longer and uses more memory than TXT because every page also goes through the layout model. Measured on an 18-core Apple Silicon Mac with 10 split workers: a 25-page paper took 3.7 s instead of 3.0 s and peaked at 2.7 GB instead of 1.5 GB; a 115-page thesis took 14.8 s instead of 12.6 s and peaked at 4.3 GB instead of 2.3 GB. In a single process the extra time is about 5%. If memory is tight, use fewer `--split-workers`.
+
 ### GUI Usage
 
 In `VOCR.app`, select the **Markdown (layout)** / **Markdown (레이아웃 구분)** checkbox. Enabling Markdown automatically unchecks and disables the TXT, page separator, and Searchable PDF options.

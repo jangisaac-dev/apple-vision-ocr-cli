@@ -119,6 +119,8 @@ swift run apple-vision-ocr path/to/input.pdf --md-only --split-workers 4
 
 Markdown 출력 옵션은 `--output`, `--txt`, `--txt-only`, `--txt-output`, `--page-breaks`와 동시에 사용할 수 없습니다(종료 코드 1). `--split-workers`, `--page-range`, `--lang`, `--recognition-level`, `--render-scale`, `--no-language-correction`, `--dry-run` 옵션은 문제없이 함께 동작합니다.
 
+Markdown은 모든 쪽을 레이아웃 모델로도 한 번 더 분석하므로 TXT보다 시간이 더 걸리고 메모리도 더 씁니다. 18코어 Apple Silicon Mac에서 워커 10개로 잰 결과, 25쪽 논문은 3.0초 대신 3.7초가 걸렸고 최대 메모리는 1.5GB 대신 2.7GB였습니다. 115쪽 학위논문은 12.6초 대신 14.8초, 2.3GB 대신 4.3GB였습니다. 단일 프로세스에서는 추가 시간이 약 5%입니다. 메모리가 부족하면 `--split-workers` 수를 줄이세요.
+
 ### GUI 사용법
 
 `VOCR.app`에서 **Markdown (레이아웃 구분)** / **Markdown (layout)** 체크박스를 선택합니다. 이 옵션을 켜면 TXT 추출, Page 구분자 넣기, Searchable PDF 생성 옵션이 자동으로 꺼지고 비활성화됩니다.

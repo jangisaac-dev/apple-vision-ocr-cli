@@ -2,7 +2,7 @@
 
 작성: 2026-10-27
 검토: 외부 advisor(codex), 내장 advisor, agy Argon 기획 리뷰 반영
-상태: 사용자 검토 대기
+상태: 구현됨 (feature/layout-markdown, 2026-10-27). 검증 결과는 CURRENT_STATUS.md 2026-10-27 항목
 
 ## 목표
 
