@@ -222,7 +222,11 @@ Quit
 Pause and cancel are applied at page boundaries. A page already inside Apple Vision recognition is allowed to finish first.
 VOCR runs as a menu bar agent (`LSUIElement`), so it never shows a Dock icon — at launch the window appears without a Dock tile, and OCR runs in the background from the menu bar. Closing the detail window keeps VOCR running from the menu bar.
 The option window also includes `Quit` when OCR is not running.
-When a job reaches a terminal state (`Completed`, `Canceled`, or `Failed`), VOCR exits automatically after a short delay.
+Completed and canceled jobs exit automatically after a short delay. If any file fails, VOCR keeps the detail window open so you can review the failure list and the number of successfully completed files; headless runs retain their automatic exit behavior.
+
+For a multi-file batch, VOCR records a failed file and continues with the remaining files. Successful outputs are kept. Split OCR retries only failed worker chunks, up to three attempts in total; invalid usage (exit code 1) is not retried. Error details preserve the operating system's underlying reason when available.
+
+Only one VOCR instance runs an OCR batch at a time. Other VOCR instances wait with a localized status message until the active batch releases the job lock. Direct CLI runs are not covered by this lock.
 
 If a selected PDF already contains selectable/searchable text and `Generate Searchable PDF` is selected, VOCR shows a warning before starting. If you continue, pages with existing selectable text are rasterized first, then new OCR text is overlaid. This avoids duplicate selectable text while preserving the original PDF file.
 

@@ -6,7 +6,7 @@ final class TextOutputWriter {
         do {
             try text.write(to: outputURL, atomically: true, encoding: .utf8)
         } catch {
-            throw AppleVisionOCRError.pdfFailure("failed to write text output: \(outputURL.path)")
+            throw AppleVisionOCRError.pdfFailure("failed to write text output: \(outputURL.path) (\(error.localizedDescription))")
         }
     }
 

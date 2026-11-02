@@ -40,6 +40,7 @@ final class ChunkedTextOCRRunner {
             includePageBreaks: options.includePageBreaks,
             pageRange: options.pageRange,
             control: control,
+            onLog: stderr,
             onProgress: onProgress
         )
     }

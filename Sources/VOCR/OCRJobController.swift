@@ -37,6 +37,7 @@ final class OCRJobController {
 
     private let files: [URL]
     private let pipeline: SearchablePDFPipeline
+    private let jobLockURL: URL
     private var control = OCRJobControl()
     private var state: VOCRRunState = .idle
     private var isRunning = false
@@ -64,9 +65,15 @@ final class OCRJobController {
         let totalPages: Int
     }
 
-    init(files: [URL], pipeline: SearchablePDFPipeline = SearchablePDFPipeline()) {
+    init(
+        files: [URL],
+        pipeline: SearchablePDFPipeline = SearchablePDFPipeline(),
+        jobLockURL: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/VOCR/job.lock")
+    ) {
         self.files = files
         self.pipeline = pipeline
+        self.jobLockURL = jobLockURL
     }
 
     func start(
@@ -123,8 +130,10 @@ final class OCRJobController {
         guard state == .running else {
             return
         }
-        state = .paused
-        control.pause()
+        parallelismLock.withLock {
+            state = .paused
+            control.pause()
+        }
         emit(snapshot: snapshotFromLast(
             state: .paused,
             message: VOCRStrings.messagePauseRequested.text
@@ -135,8 +144,10 @@ final class OCRJobController {
         guard state == .paused else {
             return
         }
-        state = .running
-        control.resume()
+        parallelismLock.withLock {
+            state = .running
+            control.resume()
+        }
         emit(snapshot: snapshotFromLast(
             state: .running,
             message: VOCRStrings.buttonResume.text
@@ -147,9 +158,9 @@ final class OCRJobController {
         guard isRunning else {
             return
         }
-        state = .canceled
-        control.cancel()
         parallelismLock.withLock {
+            state = .canceled
+            control.cancel()
             parallelismLimiter?.wakeWaiters()
         }
         emit(snapshot: snapshotFromLast(
@@ -165,8 +176,26 @@ final class OCRJobController {
         usesLanguageCorrection: Bool
     ) {
         do {
-            let pageCounts = try files.map { try pageCount(for: $0) }
-            let totalPageCount = pageCounts.reduce(0, +)
+            let jobLock = try VOCRJobLock(url: jobLockURL)
+            defer { jobLock.release() }
+            var reportedWaiting = false
+            while !control.isCanceled {
+                if try jobLock.tryAcquire() { break }
+                if !reportedWaiting {
+                    reportedWaiting = true
+                    log(VOCRStrings.messageWaitingForJob.text)
+                    emit(snapshot: snapshotFromLast(state: state, message: VOCRStrings.messageWaitingForJob.text))
+                }
+                Thread.sleep(forTimeInterval: 0.5)
+            }
+            guard !control.isCanceled else {
+                finish(state: .canceled, message: VOCRStrings.messageOCRJobCanceled.text)
+                return
+            }
+            try control.waitIfPaused()
+
+            let pageCounts = files.map { url in Result { try pageCount(for: url) } }
+            let totalPageCount = pageCounts.reduce(0) { $0 + ((try? $1.get()) ?? 0) }
             let jobs = try prepareJobs(selection: selection)
             let aggregateLock = NSLock()
             let pageLimiter = OCRParallelismLimiter(parallelism: currentParallelism())
@@ -179,7 +208,7 @@ final class OCRJobController {
                 pageProgress: Array(repeating: 0, count: jobs.count),
                 totalPages: totalPageCount
             )
-            var firstError: Error?
+            var failedFiles: [String] = []
 
             for job in jobs {
                 if control.isCanceled {
@@ -187,6 +216,7 @@ final class OCRJobController {
                 }
 
                 do {
+                    let jobPageCount = try pageCounts[job.index].get()
                     let workerCount = currentParallelism().count
                     let canUseSplitRunner = splitRunner != nil
                         && workerCount > 1
@@ -220,7 +250,8 @@ final class OCRJobController {
                             renderScale: renderScale,
                             usesLanguageCorrection: usesLanguageCorrection,
                             includePageBreaks: selection.includesPageBreaks,
-                            control: control
+                            control: control,
+                            onLog: { [weak self] message in self?.log(message) }
                         ) { [weak self] update in
                             guard let self else {
                                 return
@@ -258,7 +289,7 @@ final class OCRJobController {
 
                     let completionSnapshot = aggregateLock.withLock {
                         aggregate.completedFiles += 1
-                        aggregate.pageProgress[job.index] = pageCounts[job.index]
+                        aggregate.pageProgress[job.index] = jobPageCount
                         return snapshot(
                             state: state,
                             currentFile: job.inputURL.lastPathComponent,
@@ -270,18 +301,25 @@ final class OCRJobController {
                     emit(snapshot: completionSnapshot)
                     log(VOCRStrings.messageFileCompleted(job.inputURL.lastPathComponent))
                 } catch {
-                    firstError = error
-                    control.cancel()
-                    pageLimiter.wakeWaiters()
-                    break
+                    let canceled = parallelismLock.withLock {
+                        if state == .canceled { return true }
+                        // The in-process pipeline also cancels its control to stop workers after an error.
+                        if control.isCanceled {
+                            control = OCRJobControl()
+                            if state == .paused { control.pause() }
+                        }
+                        return false
+                    }
+                    if canceled { break }
+                    failedFiles.append(job.inputURL.lastPathComponent)
+                    log("\(job.inputURL.lastPathComponent): \(errorMessage(error))")
                 }
             }
 
-            if let firstError {
-                let finalState: VOCRRunState = state == .canceled ? .canceled : .failed
-                finish(state: finalState, message: errorMessage(firstError))
-            } else if control.isCanceled || state == .canceled {
+            if control.isCanceled || state == .canceled {
                 finish(state: .canceled, message: VOCRStrings.messageOCRJobCanceled.text)
+            } else if !failedFiles.isEmpty {
+                finish(state: .failed, message: VOCRStrings.messageOCRJobFailed(failedFiles))
             } else {
                 finish(state: .completed, message: VOCRStrings.messageOCRJobCompleted.text)
             }

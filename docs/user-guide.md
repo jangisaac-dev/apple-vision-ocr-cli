@@ -245,6 +245,20 @@ Insert page separators
 The menu bar item shows progress while OCR runs. Closing the detail window keeps
 the job running from the menu bar.
 
+For a batch of PDFs, a failed file is recorded and the remaining files continue.
+Successful outputs are kept. The final result lists failed files and counts only
+successfully completed files as successes. Split OCR retries failed worker chunks
+up to three attempts in total; invalid usage (exit code 1) is not retried. Error
+details include the operating system's underlying reason when available.
+
+Completed and canceled jobs exit automatically after a short delay. A failed batch
+keeps the detail window open for reviewing the result. Headless runs retain their
+automatic exit behavior.
+
+Only one VOCR instance runs an OCR batch at a time. Other instances show a localized
+waiting message until the active batch releases the job lock. This lock does not
+cover direct CLI runs.
+
 ## Custom Install Paths
 
 The app and binary install locations can be customized:

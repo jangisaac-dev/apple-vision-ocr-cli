@@ -12,7 +12,7 @@ enum AtomicOutputWriter {
             try fileManager.moveItem(at: temporaryURL, to: outputURL)
         } catch {
             try? fileManager.removeItem(at: temporaryURL)
-            throw AppleVisionOCRError.pdfFailure("failed to write output: \(outputURL.path)")
+            throw AppleVisionOCRError.pdfFailure("failed to write output: \(outputURL.path) (\(error.localizedDescription))")
         }
     }
 }

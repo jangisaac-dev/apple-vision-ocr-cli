@@ -21,6 +21,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Split OCR worker processes (`SplitProcessOCRRunner.swift`, used by both CLI `--split-workers` and the VOCR GUI) are now launched through `/usr/sbin/taskpolicy -c utility`, applying a utility QoS clamp on every thread of each worker so heavy OCR jobs yield CPU to network daemons (VPN/proxy) and foreground apps instead of starving them.
 - The VOCR GUI default worker count now uses `OCRJobParallelism.recommendedWorkerCount()` in `Sources/AppleVisionOCRCore/OCRJobOptions.swift`: two-thirds of active cores minus 2, clamped to 2...16 (10 on an 18-core Mac, 3 on an 8-core Mac; previously two-thirds of active cores, or 12 on 18 cores). `OCRJobParallelism.default` stays 8.
 
+### Fixed
+
+- Split OCR retries only failed worker chunks up to three total attempts, except invalid usage (exit code 1), which is not retried.
+- VOCR continues a multi-file batch after an individual file fails, preserves successful outputs, and reports failed files separately from the successful-file count.
+- Failed VOCR batches keep the detail window open for review; completed and canceled jobs still exit automatically, as do headless runs.
+- Error messages retain the underlying operating-system failure reason when available.
+- Split OCR keeps its chunk intermediates in `~/Library/Caches/apple-vision-ocr/` instead of the shared `$TMPDIR`. On 2026-10-31 a split run's `$TMPDIR` folder disappeared mid-run twice, and every retry then failed with "Markdown output directory does not exist". What removed it was not identified. Later the same day, every user-created entry in `$TMPDIR` was wiped within two seconds of Hancom Office HWP launching; the app is not sandboxed and so shares that folder. A split job running from the cache folder at that moment finished normally. If the cache folder cannot be written, for example inside a sandbox, split OCR still uses `$TMPDIR`.
+- Multiple VOCR instances serialize OCR batches with a cross-instance job lock and localized waiting status. Direct CLI runs are outside this lock.
+
 ## [1.3.1] - 2026-09-14
 
 ### Fixed

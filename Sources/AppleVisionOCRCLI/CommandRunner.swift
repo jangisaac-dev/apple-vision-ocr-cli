@@ -87,6 +87,7 @@ public final class CommandRunner {
                             includePageBreaks: options.includePageBreaks,
                             pageRange: options.pageRange,
                             control: control,
+                            onLog: stderr,
                             onProgress: reportProgress
                         )
                     } else if options.outputURL != nil {
@@ -108,6 +109,7 @@ public final class CommandRunner {
                             usesLanguageCorrection: options.usesLanguageCorrection,
                             pageRange: options.pageRange,
                             control: control,
+                            onLog: stderr,
                             onProgress: reportProgress
                         )
                     } else {

@@ -3,6 +3,21 @@ import XCTest
 @testable import AppleVisionOCRCore
 
 final class SplitProcessOCRRunnerTests: XCTestCase {
+    func testAtomicOutputMissingDirectoryIncludesUnderlyingReason() throws {
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent("missing/output.md")
+        XCTAssertThrowsError(try AtomicOutputWriter.write(Data("text".utf8), to: outputURL)) { error in
+            guard case .pdfFailure(let message) = error as? AppleVisionOCRError else {
+                return XCTFail("expected PDF failure")
+            }
+            XCTAssertTrue(message.hasPrefix("failed to write output: \(outputURL.path) ("))
+            XCTAssertTrue(message.hasSuffix(")"))
+            XCTAssertGreaterThan(message.count, "failed to write output: \(outputURL.path) ()".count)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outputURL.path))
+    }
+
     func testPlanChunksEvenlyAcrossWorkers() {
         let chunks = SplitProcessOCRRunner.planChunks(pageCount: 24, workerCount: 12)
 

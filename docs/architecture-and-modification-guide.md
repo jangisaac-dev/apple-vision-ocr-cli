@@ -158,7 +158,7 @@ Log locations:
 - `PDFTextOverlayWriter.swift`: Draws background pages and overlays invisible CoreText glyphs to assemble searchable PDFs.
 - `PDFTextPresenceDetector.swift`: Uses PDFKit to detect existing selectable text layers in input documents.
 - `SearchablePDFPipeline.swift`: Orchestrates single-process OCR using a bounded render-ahead queue to decouple rendering from recognition.
-- `SplitProcessOCRRunner.swift`: Manages child worker processes across page chunks, streams progress, handles pause/cancel, and merges outputs (PDF merge, text concatenation, or combined Markdown document rendering from child `MarkdownPage` JSON).
+- `SplitProcessOCRRunner.swift`: Manages child worker processes across page chunks, streams progress, handles pause/cancel, and merges outputs (PDF merge, text concatenation, or combined Markdown document rendering from child `MarkdownPage` JSON). Chunk intermediates live in `~/Library/Caches/apple-vision-ocr/apple-vision-ocr-split-*` (falls back to `$TMPDIR` when that folder cannot be written) because shared `$TMPDIR` entries were observed vanishing mid-run (most likely Hancom Office HWP, which is not sandboxed, clearing the temp folder it shares with other apps). Do not move them back to `$TMPDIR`.
 - `TextOutputWriter.swift`: Writes recognized text to disk with optional `===== Page N =====` separators.
 - `UniqueOutputPathResolver.swift`: Generates non-colliding output paths by incrementing numeric suffixes (`(1)`, `(2)`).
 - `VisionLanguageResolver.swift`: Resolves language aliases (`ko` -> `ko-KR`) and queries Vision for supported languages.

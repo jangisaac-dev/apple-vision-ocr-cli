@@ -105,7 +105,8 @@ Start a job:
 
 ```bash
 CLI="$HOME/.local/bin/apple-vision-ocr"
-export JOB="$(mktemp -d "${TMPDIR:-/tmp}/ocr-job.XXXXXX")"   # new directory per job; exported for the inner sh
+mkdir -p "$HOME/Library/Caches/apple-vision-ocr"            # not $TMPDIR: other apps may empty it mid-run
+export JOB="$(mktemp -d "$HOME/Library/Caches/apple-vision-ocr/ocr-job.XXXXXX")"   # new directory per job; exported for the inner sh
 echo "$JOB"                                                  # keep this path to poll or cancel later
 
 nohup sh -c '"$0" "$@" >"$JOB/out" 2>"$JOB/err" & echo $! >"$JOB/pid"; wait $!; echo $? >"$JOB/exit"' \

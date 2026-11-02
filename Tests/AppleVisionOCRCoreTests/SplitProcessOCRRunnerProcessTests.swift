@@ -21,6 +21,139 @@ final class SplitProcessOCRRunnerProcessTests: XCTestCase {
         super.tearDown()
     }
 
+    func testSplitChunksLiveInUserCacheInsteadOfSharedTemporaryDirectory() throws {
+        try XCTSkipIf(ProcessInfo.processInfo.environment["CODEX_SANDBOX"] != nil, "cache folder is not writable in the sandbox")
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let inputURL = directory.appendingPathComponent("input.pdf")
+        let outputURL = directory.appendingPathComponent("output.txt")
+        try makePDF(at: inputURL, pageCount: 1)
+        let workerURL = try makeWorker(in: directory, body: "printf 'ok' > \"$output\"")
+        try SplitProcessOCRRunner(executableURL: workerURL).run(
+            inputURL: inputURL, output: .text(outputURL), workerCount: 1,
+            languages: ["en"], recognitionLevel: .fast, renderScale: .compact
+        )
+        let cacheRoot = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("apple-vision-ocr").path
+        let invocations = try String(contentsOf: directory.appendingPathComponent("invocations.log"), encoding: .utf8)
+        XCTAssertTrue(invocations.contains(cacheRoot + "/apple-vision-ocr-split-"), invocations)
+    }
+
+    func testRetriesOnlyFailedChunkAndDeduplicatesAbsolutePageProgress() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let inputURL = directory.appendingPathComponent("input.pdf")
+        let outputURL = directory.appendingPathComponent("output.txt")
+        try makePDF(at: inputURL, pageCount: 4)
+        let workerURL = try makeWorker(in: directory, body: """
+        if [ "$range" = "2-3" ]; then
+            if [ ! -f "$support_dir/attempted" ]; then
+                : > "$support_dir/attempted"
+                printf 'partial' > "$output"
+                printf 'Completed page 2\\n' >&2
+                printf 'first attempt detail\\n' >&2
+                exit 9
+            fi
+            [ ! -e "$output" ] || exit 1
+            printf 'Completed page invalid\\nCompleted page 99\\nCompleted page 1\\n' >&2
+            printf 'Completed page 2\\nCompleted page 2\\nCompleted page 3\\n' >&2
+        else
+            printf 'Completed page 4\\n' >&2
+        fi
+        printf 'chunk-%s' "$range" > "$output"
+        """)
+        let progress = Locked<[Int]>([])
+        var logs: [String] = []
+        try SplitProcessOCRRunner(executableURL: workerURL).run(
+            inputURL: inputURL, output: .text(outputURL), workerCount: 2,
+            languages: ["en"], recognitionLevel: .fast, renderScale: .compact,
+            pageRange: 2...4, onLog: { logs.append($0) }
+        ) { update in progress.withValue { $0.append(update.completedPages) } }
+        XCTAssertEqual(try String(contentsOf: outputURL, encoding: .utf8), "chunk-2-3\nchunk-4-4")
+        XCTAssertEqual(progress.value, [1, 2, 3])
+        XCTAssertEqual(logs, ["split worker 0 (pages 2-3) failed (exit status 9); retrying, attempt 2/3"])
+        try assertInvocations(in: directory, expectedRanges: ["2-3", "2-3", "4-4"])
+        try assertRecordedProcessesExited(in: directory)
+    }
+
+    func testSignalFailureRetriesAndSucceeds() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let inputURL = directory.appendingPathComponent("input.pdf")
+        let outputURL = directory.appendingPathComponent("output.txt")
+        try makePDF(at: inputURL, pageCount: 1)
+        let workerURL = try makeWorker(in: directory, body: """
+        if [ ! -f "$support_dir/attempted" ]; then
+            : > "$support_dir/attempted"
+            kill -KILL $$
+        fi
+        printf 'recovered' > "$output"
+        """)
+        var logs: [String] = []
+        try SplitProcessOCRRunner(executableURL: workerURL).run(
+            inputURL: inputURL, output: .text(outputURL), workerCount: 1,
+            languages: ["en"], recognitionLevel: .fast, renderScale: .compact,
+            onLog: { logs.append($0) }
+        )
+        XCTAssertEqual(try String(contentsOf: outputURL, encoding: .utf8), "recovered")
+        XCTAssertEqual(logs, ["split worker 0 (pages 1-1) failed (signal 9); retrying, attempt 2/3"])
+        try assertInvocations(in: directory, expectedRanges: ["1-1", "1-1"])
+        try assertRecordedProcessesExited(in: directory)
+    }
+
+    func testRetryLimitKeepsLastAttemptTailAndCleansSiblingAndTemporaryOutputs() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let inputURL = directory.appendingPathComponent("input.pdf")
+        let outputURL = directory.appendingPathComponent("output.txt")
+        try makePDF(at: inputURL, pageCount: 2)
+        let workerURL = try makeWorker(in: directory, body: """
+        if [ "$range" = "2-2" ]; then
+            trap '' TERM
+            : > "$support_dir/sibling-ready"
+            while :; do :; done
+        fi
+        while [ ! -f "$support_dir/sibling-ready" ]; do :; done
+        count=0
+        if [ -f "$support_dir/count" ]; then count=$(cat "$support_dir/count"); fi
+        count=$((count + 1))
+        printf '%s' "$count" > "$support_dir/count"
+        [ ! -e "$output" ] || exit 1
+        printf 'partial' > "$output"
+        printf 'attempt-%s-detail\\n' "$count" >&2
+        exit 7
+        """)
+        let before = splitTemporaryDirectories()
+        let logs = Locked<[String]>([])
+        let outcome = Locked<Result<Void, Error>?>(nil)
+        let finished = expectation(description: "retry limit returns")
+        DispatchQueue.global().async {
+            do {
+                try SplitProcessOCRRunner(executableURL: workerURL).run(
+                    inputURL: inputURL, output: .text(outputURL), workerCount: 2,
+                    languages: ["en"], recognitionLevel: .fast, renderScale: .compact,
+                    onLog: { line in logs.withValue { $0.append(line) } }
+                )
+                outcome.withValue { $0 = .success(()) }
+            } catch {
+                outcome.withValue { $0 = .failure(error) }
+            }
+            finished.fulfill()
+        }
+        wait(for: [finished], timeout: 10)
+        guard case .failure(let error) = outcome.value else {
+            return XCTFail("expected failure after three attempts")
+        }
+        XCTAssertEqual(error as? AppleVisionOCRError,
+                       .pdfFailure("split worker 0 pages 1-1 failed after 3 attempt(s): attempt-3-detail"))
+        XCTAssertEqual(logs.value.count, 2)
+        XCTAssertEqual(try String(contentsOf: directory.appendingPathComponent("count"), encoding: .utf8), "3")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outputURL.path))
+        XCTAssertEqual(splitTemporaryDirectories(), before)
+        try assertInvocations(in: directory, expectedRanges: ["1-1", "1-1", "1-1", "2-2"])
+        try assertRecordedProcessesExited(in: directory)
+    }
+
     func testRunMergesTextReportsProgressAndPassesExactTextArguments() throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -50,10 +183,11 @@ final class SplitProcessOCRRunnerProcessTests: XCTestCase {
             recognitionLevel: .fast,
             renderScale: .balanced,
             usesLanguageCorrection: false,
-            includePageBreaks: false
-        ) { update in
-            progress.withValue { $0.append(update) }
-        }
+            includePageBreaks: false,
+            onProgress: { update in
+                progress.withValue { $0.append(update) }
+            }
+        )
 
         XCTAssertEqual(try String(contentsOf: outputURL), "chunk-1-2\nchunk-3-3")
         XCTAssertEqual(progress.value.map(\.completedPages), [1, 2, 3])
@@ -125,10 +259,11 @@ final class SplitProcessOCRRunnerProcessTests: XCTestCase {
             workerCount: 2,
             languages: ["en"],
             recognitionLevel: .fast,
-            renderScale: .compact
-        ) { update in
-            progress.withValue { $0.append(update) }
-        }
+            renderScale: .compact,
+            onProgress: { update in
+                progress.withValue { $0.append(update) }
+            }
+        )
 
         XCTAssertEqual(try String(contentsOf: outputURL), "chunk-1-2\nchunk-3-3")
         XCTAssertEqual(progress.value.map(\.completedPages), [1, 2, 3])
@@ -251,10 +386,11 @@ final class SplitProcessOCRRunnerProcessTests: XCTestCase {
             languages: ["ko", "en"],
             recognitionLevel: .fast,
             renderScale: .balanced,
-            pageRange: 2...4
-        ) { update in
-            progress.withValue { $0.append(update) }
-        }
+            pageRange: 2...4,
+            onProgress: { update in
+                progress.withValue { $0.append(update) }
+            }
+        )
 
         XCTAssertEqual(try String(contentsOf: outputURL), "chunk-2-3\nchunk-4-4")
         XCTAssertEqual(Set(progress.value.map(\.totalPages)), [3])
@@ -444,7 +580,7 @@ final class SplitProcessOCRRunnerProcessTests: XCTestCase {
         }
         XCTAssertEqual(
             error as? AppleVisionOCRError,
-            .pdfFailure("split worker 0 failed: deliberate worker failure detail")
+            .pdfFailure("split worker 0 pages 1-1 failed after 1 attempt(s): deliberate worker failure detail")
         )
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: outputURL.path))
@@ -733,10 +869,14 @@ final class SplitProcessOCRRunnerProcessTests: XCTestCase {
     }
 
     private func splitTemporaryDirectories() -> Set<String> {
-        let urls = (try? FileManager.default.contentsOfDirectory(
-            at: FileManager.default.temporaryDirectory,
-            includingPropertiesForKeys: nil
-        )) ?? []
+        let roots = [
+            FileManager.default.temporaryDirectory,
+            FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("apple-vision-ocr", isDirectory: true)
+        ]
+        let urls = roots.flatMap {
+            (try? FileManager.default.contentsOfDirectory(at: $0, includingPropertiesForKeys: nil)) ?? []
+        }
         return Set(urls.map(\.lastPathComponent).filter { $0.hasPrefix("apple-vision-ocr-split-") })
     }
 

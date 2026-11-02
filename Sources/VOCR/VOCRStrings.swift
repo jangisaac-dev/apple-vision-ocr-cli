@@ -118,6 +118,14 @@ enum VOCRStrings {
     static func messageFileCompleted(_ fileName: String) -> String {
         language == .english ? "Completed: \(fileName)" : "완료: \(fileName)"
     }
+    static let messageWaitingForJob = VOCRLocalizedString(
+        english: "Waiting for another VOCR job to finish…",
+        korean: "다른 VOCR 작업이 끝나기를 기다리는 중…"
+    )
+    static func messageOCRJobFailed(_ fileNames: [String]) -> String {
+        let names = fileNames.joined(separator: ", ")
+        return language == .english ? "OCR failed for: \(names)" : "OCR 실패 파일: \(names)"
+    }
     static let messageOCRJobCompleted = VOCRLocalizedString(english: "OCR job completed", korean: "OCR 작업 완료")
     static let checkboxExtractText = VOCRLocalizedString(english: "Extract TXT", korean: "TXT 추출")
     static let checkboxInsertPageSeparators = VOCRLocalizedString(english: "Insert page separators", korean: "Page 구분자 넣기")
@@ -245,6 +253,7 @@ This avoids duplicate selection of existing searchable text. The original PDF is
         "messageCancelRequested": messageCancelRequested,
         "logCLINotFoundSingleProcess": logCLINotFoundSingleProcess,
         "messageOCRJobCompleted": messageOCRJobCompleted,
+        "messageWaitingForJob": messageWaitingForJob,
         "checkboxExtractText": checkboxExtractText,
         "checkboxInsertPageSeparators": checkboxInsertPageSeparators,
         "checkboxGenerateSearchablePDF": checkboxGenerateSearchablePDF,

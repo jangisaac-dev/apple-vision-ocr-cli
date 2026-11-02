@@ -40,6 +40,7 @@ public final class SplitProcessOCRRunner {
         includePageBreaks: Bool = false,
         pageRange: ClosedRange<Int>? = nil,
         control: OCRJobControl = OCRJobControl(),
+        onLog: ((String) -> Void)? = nil,
         onProgress: ((ProgressUpdate) -> Void)? = nil
     ) throws {
         guard let sourceDocument = CGPDFDocument(inputURL as CFURL) else {
@@ -59,8 +60,15 @@ public final class SplitProcessOCRRunner {
         }
         let pageOffset = selectedPages.lowerBound - 1
         let effectiveWorkers = max(1, min(workerCount, selectedPages.count))
-        let temporaryRoot = fileManager.temporaryDirectory
-            .appendingPathComponent("apple-vision-ocr-split-\(UUID().uuidString)", isDirectory: true)
+        // Entries under the shared $TMPDIR vanished mid-run on 2026-10-31 (deleter unknown), so chunks live in the user cache.
+        let rootName = "apple-vision-ocr-split-\(UUID().uuidString)"
+        var temporaryRoot = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("apple-vision-ocr", isDirectory: true)
+            .appendingPathComponent(rootName, isDirectory: true)
+        if (try? fileManager.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)) == nil {
+            // Sandboxed callers (e.g. Codex test runs) cannot write the cache folder.
+            temporaryRoot = fileManager.temporaryDirectory.appendingPathComponent(rootName, isDirectory: true)
+        }
         let outputDirectory = temporaryRoot.appendingPathComponent("out", isDirectory: true)
 
         try fileManager.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
@@ -105,6 +113,7 @@ public final class SplitProcessOCRRunner {
             includePageBreaks: includePageBreaks,
             totalPages: selectedPages.count,
             control: control,
+            onLog: onLog,
             onProgress: onProgress
         )
         if control.isCanceled {
@@ -205,7 +214,7 @@ public final class SplitProcessOCRRunner {
             try fileManager.moveItem(at: temporaryURL, to: outputURL)
         } catch {
             try? fileManager.removeItem(at: temporaryURL)
-            throw AppleVisionOCRError.pdfFailure("failed to write text output: \(outputURL.path)")
+            throw AppleVisionOCRError.pdfFailure("failed to write text output: \(outputURL.path) (\(error.localizedDescription))")
         }
     }
 
@@ -233,42 +242,49 @@ public final class SplitProcessOCRRunner {
         let chunk: Chunk
         let process: Process
         let spawnTime: Date
+        let attempt: Int
+        let readers: DispatchGroup
     }
 
     private final class ProgressState {
         private let lock = NSLock()
         private let totalPages: Int
-        private var completedPages = 0
-        private var stderrTails: [Int: [String]] = [:]
+        private var completedPages = Set<Int>()
+        private var stderrTails: [String: [String]] = [:]
 
         init(totalPages: Int) {
             self.totalPages = totalPages
         }
 
-        func recordLine(_ line: String, workerIndex: Int, isStderr: Bool) -> ProgressUpdate? {
+        func recordLine(_ line: String, workerKey: String, range: ClosedRange<Int>, isStderr: Bool) -> ProgressUpdate? {
             var update: ProgressUpdate?
             lock.lock()
             if isStderr {
-                var tail = stderrTails[workerIndex, default: []]
+                var tail = stderrTails[workerKey, default: []]
                 tail.append(line)
                 if tail.count > 20 {
                     tail.removeFirst(tail.count - 20)
                 }
-                stderrTails[workerIndex] = tail
+                stderrTails[workerKey] = tail
             }
-            if isStderr, line.hasPrefix("Completed page "), completedPages < totalPages {
-                completedPages += 1
-                update = ProgressUpdate(completedPages: completedPages, totalPages: totalPages)
+            let prefix = "Completed page "
+            if isStderr, line.hasPrefix(prefix) {
+                let number = line.dropFirst(prefix.count)
+                if !number.isEmpty, number.allSatisfy({ $0.isASCII && $0.isNumber }),
+                   let page = Int(number), range.contains(page),
+                   completedPages.count < totalPages, completedPages.insert(page).inserted {
+                    update = ProgressUpdate(completedPages: completedPages.count, totalPages: totalPages)
+                }
             }
             lock.unlock()
             return update
         }
 
-        func stderrTail(for workerIndex: Int) -> String {
+        func stderrTail(for workerKey: String) -> String {
             lock.lock()
             defer { lock.unlock() }
 
-            let tail = stderrTails[workerIndex, default: []].joined(separator: "\n")
+            let tail = stderrTails[workerKey, default: []].joined(separator: "\n")
             if tail.isEmpty {
                 return "no stderr output"
             }
@@ -287,6 +303,7 @@ public final class SplitProcessOCRRunner {
         includePageBreaks: Bool,
         totalPages: Int,
         control: OCRJobControl,
+        onLog: ((String) -> Void)?,
         onProgress: ((ProgressUpdate) -> Void)?
     ) throws {
         let progressState = ProgressState(totalPages: totalPages)
@@ -295,63 +312,74 @@ public final class SplitProcessOCRRunner {
         let progressQueue = DispatchQueue(label: "apple-vision-ocr.split-process-progress")
         var workers: [Worker] = []
 
-        func reportProgress(_ update: ProgressUpdate) {
-            guard let onProgress else {
-                return
+        func startWorker(_ chunk: Chunk, attempt: Int) throws -> Worker {
+            if control.isCanceled {
+                throw AppleVisionOCRError.pdfFailure("OCR job canceled")
             }
-            progressQueue.sync {
-                onProgress(update)
+            let readers = DispatchGroup()
+            let workerKey = "\(chunk.index)-\(attempt)"
+            let stdoutPipe = Pipe()
+            let stderrPipe = Pipe()
+            let process = Process()
+            // Keep heavy OCR split workers from starving network daemons.
+            process.executableURL = URL(fileURLWithPath: "/usr/sbin/taskpolicy")
+            process.arguments = ["-c", "utility", executableURL.path] + childArguments(
+                for: chunk,
+                inputURL: inputURL,
+                output: output,
+                languages: languages,
+                recognitionLevel: recognitionLevel,
+                renderScale: renderScale,
+                usesLanguageCorrection: usesLanguageCorrection,
+                includePageBreaks: includePageBreaks
+            )
+            process.standardOutput = stdoutPipe
+            process.standardError = stderrPipe
+            process.environment = ProcessInfo.processInfo.environment.merging([
+                "APPLE_VISION_OCR_PARENT_PID": String(ProcessInfo.processInfo.processIdentifier)
+            ]) { _, childValue in childValue }
+
+            let spawnTime = Date()
+            try process.run()
+            readerGroup.enter()
+            for (pipe, isStderr) in [(stdoutPipe, false), (stderrPipe, true)] {
+                Self.readLines(from: pipe, on: readerQueue, group: readers) { line in
+                    progressQueue.sync {
+                        if let update = progressState.recordLine(
+                            line, workerKey: workerKey, range: chunk.range, isStderr: isStderr
+                        ) {
+                            onProgress?(update)
+                        }
+                    }
+                }
             }
+            readers.notify(queue: readerQueue) { readerGroup.leave() }
+            return Worker(chunk: chunk, process: process, spawnTime: spawnTime,
+                          attempt: attempt, readers: readers)
         }
 
         do {
             for chunk in chunks {
-                if control.isCanceled {
-                    throw AppleVisionOCRError.pdfFailure("OCR job canceled")
-                }
-
-                let stdoutPipe = Pipe()
-                let stderrPipe = Pipe()
-                let process = Process()
-                // Keep heavy OCR split workers from starving network daemons.
-                process.executableURL = URL(fileURLWithPath: "/usr/sbin/taskpolicy")
-                process.arguments = ["-c", "utility", executableURL.path] + childArguments(
-                    for: chunk,
-                    inputURL: inputURL,
-                    output: output,
-                    languages: languages,
-                    recognitionLevel: recognitionLevel,
-                    renderScale: renderScale,
-                    usesLanguageCorrection: usesLanguageCorrection,
-                    includePageBreaks: includePageBreaks
-                )
-                process.standardOutput = stdoutPipe
-                process.standardError = stderrPipe
-                process.environment = ProcessInfo.processInfo.environment.merging([
-                    "APPLE_VISION_OCR_PARENT_PID": String(ProcessInfo.processInfo.processIdentifier)
-                ]) { _, childValue in childValue }
-
-                let spawnTime = Date()
-                try process.run()
-                workers.append(Worker(chunk: chunk, process: process, spawnTime: spawnTime))
-
-                Self.readLines(from: stdoutPipe, on: readerQueue, group: readerGroup) { line in
-                    if let update = progressState.recordLine(line, workerIndex: chunk.index, isStderr: false) {
-                        reportProgress(update)
-                    }
-                }
-                Self.readLines(from: stderrPipe, on: readerQueue, group: readerGroup) { line in
-                    if let update = progressState.recordLine(line, workerIndex: chunk.index, isStderr: true) {
-                        reportProgress(update)
-                    }
-                }
+                workers.append(try startWorker(chunk, attempt: 1))
             }
-
-            let failedWorker = try waitForWorkers(workers, control: control)
+            let failedWorker = try waitForWorkers(&workers, control: control) { worker in
+                _ = worker.readers.wait(timeout: .now() + .seconds(2))
+                if worker.process.terminationReason == .exit && worker.process.terminationStatus == 1 {
+                    return nil
+                }
+                guard worker.attempt < 3 else { return nil }
+                for url in [worker.chunk.outputURL, worker.chunk.textOutputURL].compactMap({ $0 }) {
+                    if fileManager.fileExists(atPath: url.path) {
+                        try fileManager.removeItem(at: url)
+                    }
+                }
+                onLog?("split worker \(worker.chunk.index) (pages \(worker.chunk.range.lowerBound)-\(worker.chunk.range.upperBound)) failed (\(worker.process.terminationReason == .uncaughtSignal ? "signal" : "exit status") \(worker.process.terminationStatus)); retrying, attempt \(worker.attempt + 1)/3")
+                return try startWorker(worker.chunk, attempt: worker.attempt + 1)
+            }
             if let failedWorker {
                 _ = readerGroup.wait(timeout: .now() + .seconds(2))
                 throw AppleVisionOCRError.pdfFailure(
-                    "split worker \(failedWorker.chunk.index) failed: \(progressState.stderrTail(for: failedWorker.chunk.index))"
+                    "split worker \(failedWorker.chunk.index) pages \(failedWorker.chunk.range.lowerBound)-\(failedWorker.chunk.range.upperBound) failed after \(failedWorker.attempt) attempt(s): \(progressState.stderrTail(for: "\(failedWorker.chunk.index)-\(failedWorker.attempt)"))"
                 )
             }
             _ = readerGroup.wait(timeout: .now() + .seconds(5))
@@ -363,8 +391,9 @@ public final class SplitProcessOCRRunner {
     }
 
     private func waitForWorkers(
-        _ workers: [Worker],
-        control: OCRJobControl
+        _ workers: inout [Worker],
+        control: OCRJobControl,
+        retry: (Worker) throws -> Worker?
     ) throws -> Worker? {
         var isSuspended = false
         var reportedWorkerIndices = Set<Int>()
@@ -412,8 +441,24 @@ public final class SplitProcessOCRRunner {
             }
 
             if let failedWorker = workers.first(where: {
-                !$0.process.isRunning && $0.process.terminationStatus != ExitCode.success.rawValue
+                !$0.process.isRunning && ($0.process.terminationReason != .exit ||
+                    $0.process.terminationStatus != ExitCode.success.rawValue)
             }) {
+                if let replacement = try retry(failedWorker),
+                   let index = workers.firstIndex(where: { $0.chunk.index == failedWorker.chunk.index }) {
+                    if control.isPaused && !isSuspended {
+                        for worker in workers where worker.process.isRunning {
+                            kill(worker.process.processIdentifier, SIGSTOP)
+                        }
+                        isSuspended = true
+                    }
+                    if isSuspended {
+                        kill(replacement.process.processIdentifier, SIGSTOP)
+                    }
+                    workers[index] = replacement
+                    reportedWorkerIndices.remove(failedWorker.chunk.index)
+                    continue
+                }
                 if isSuspended {
                     for worker in workers where worker.process.isRunning {
                         kill(worker.process.processIdentifier, SIGCONT)
@@ -424,7 +469,8 @@ public final class SplitProcessOCRRunner {
                 return failedWorker
             }
 
-            if workers.allSatisfy({ !$0.process.isRunning }) {
+            if workers.allSatisfy({ !$0.process.isRunning && $0.process.terminationReason == .exit &&
+                $0.process.terminationStatus == ExitCode.success.rawValue }) {
                 return nil
             }
 

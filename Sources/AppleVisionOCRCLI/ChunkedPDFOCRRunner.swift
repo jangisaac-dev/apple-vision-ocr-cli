@@ -39,6 +39,7 @@ final class ChunkedPDFOCRRunner {
             usesLanguageCorrection: options.usesLanguageCorrection,
             pageRange: options.pageRange,
             control: control,
+            onLog: stderr,
             onProgress: onProgress
         )
     }

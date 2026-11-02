@@ -4,10 +4,10 @@ import AppleVisionOCRCore
 @testable import VOCR
 
 final class VOCRAppLifecyclePolicyTests: XCTestCase {
-    func testTerminalJobStatesScheduleAppTermination() {
+    func testSuccessfulAndCanceledJobsScheduleAppTermination() {
         XCTAssertTrue(VOCRAppLifecyclePolicy.shouldTerminateAfterFinish(.completed))
         XCTAssertTrue(VOCRAppLifecyclePolicy.shouldTerminateAfterFinish(.canceled))
-        XCTAssertTrue(VOCRAppLifecyclePolicy.shouldTerminateAfterFinish(.failed))
+        XCTAssertFalse(VOCRAppLifecyclePolicy.shouldTerminateAfterFinish(.failed))
     }
 
     func testNonTerminalJobStatesDoNotScheduleAppTermination() {
@@ -125,6 +125,7 @@ final class VOCRAppLifecyclePolicyTests: XCTestCase {
                     ("messageOCRFile", VOCRStrings.messageOCRFile(fileName), [fileName]),
                     ("logFileStarted", VOCRStrings.logFileStarted(fileName), [fileName]),
                     ("messageFileCompleted", VOCRStrings.messageFileCompleted(fileName), [fileName]),
+                    ("messageOCRJobFailed", VOCRStrings.messageOCRJobFailed([fileName]), [fileName]),
                     ("logPlannedOutput", VOCRStrings.logPlannedOutput(fileName), [fileName]),
                     ("pipelineRenderingPage", VOCRStrings.pipelineRenderingPage(pageNumber), [String(pageNumber)]),
                     ("pipelineRecognizingPage", VOCRStrings.pipelineRecognizingPage(pageNumber), [String(pageNumber)]),
