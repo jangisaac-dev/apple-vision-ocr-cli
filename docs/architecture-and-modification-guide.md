@@ -393,7 +393,7 @@ All multi-process logic lives in `Sources/AppleVisionOCRCore/SplitProcessOCRRunn
 
 | Concern | Code |
 | :--- | :--- |
-| Worker count bounds | CLI: `parseSplitWorkers(_:)` in `CLIOptions.swift` (2–16). GUI: `OCRJobParallelism.minimumCount` / `maximumCount` (1–16) with the default `VOCRWindowController.defaultWorkerCount` (`OCRJobParallelism.recommendedWorkerCount()`: two-thirds of active cores minus 2, clamped to 2–16). |
+| Worker count bounds | CLI: `parseSplitWorkers(_:)` in `CLIOptions.swift` (2–16). GUI: `OCRJobParallelism.minimumCount` / `maximumCount` (1–16) with the default `VOCRWindowController.defaultWorkerCount` (`OCRJobParallelism.recommendedWorkerCount()`: a quarter of active cores, clamped to 2–16). |
 | When the GUI splits | `OCRJobController.run(...)`: `canUseSplitRunner = splitRunner != nil && workerCount > 1`, for TXT, PDF, or both. |
 | How pages are divided | `SplitProcessOCRRunner.planChunks(pageCount:workerCount:)` — contiguous ranges, remainder pages go to the first workers. With `pageRange` (CLI `--page-range`), chunks are planned over the selected pages only and shifted to absolute page numbers; a range past the last page throws `invalidUsage`. |
 | What each child runs | `childArguments(...)` builds `apple-vision-ocr` arguments with `--page-range A-B` and a per-chunk output path. The parent's `--page-parallelism` is not forwarded; children use their default unless `APPLE_VISION_OCR_SPLIT_CHILD_PAGE_PARALLELISM` is set. |

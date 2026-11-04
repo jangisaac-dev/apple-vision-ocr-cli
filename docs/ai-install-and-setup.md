@@ -142,7 +142,7 @@ Tune throughput and accuracy according to document characteristics:
 | `--md-only` | As needed | Write layout-aware Markdown to `<input>.md`. Exclusive with PDF and TXT options. |
 | `--md-output <path>` | As needed | Write layout-aware Markdown to explicit path. Exclusive with PDF and TXT options. |
 | `--recognition-level` | `accurate` (default) | Required for Korean and default `ko,en`. `fast` only supports English. |
-| `--split-workers` | `2-16` (~2/3 of CPU cores minus 2; ~10 on 18-core Mac) | Multi-process parallelism across pages for large PDFs. In-process `--page-parallelism` does not add throughput due to Vision framework serialization. |
+| `--split-workers` | `2-16` (start at the VOCR default, 1/4 of CPU cores or 4 on an 18-core Mac; more workers can stall a full-tunnel VPN, so measure before raising) | Multi-process parallelism across pages for large PDFs. In-process `--page-parallelism` does not add throughput due to Vision framework serialization. |
 | `--no-language-correction` | Included on clean scans | ~2.5x faster processing with near-identical accuracy on clean scans. |
 | `--render-scale` | `1.5` | Faster rasterization for Korean documents while maintaining high recognition quality (default `2.0`). |
 

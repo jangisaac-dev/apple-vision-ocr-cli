@@ -7,11 +7,12 @@ final class OCRJobParallelismTests: XCTestCase {
     }
 
     func testRecommendedWorkerCountClampsToAvailableHeadroom() {
-        XCTAssertEqual(OCRJobParallelism.recommendedWorkerCount(activeProcessorCount: 18), 10)
-        XCTAssertEqual(OCRJobParallelism.recommendedWorkerCount(activeProcessorCount: 8), 3)
+        XCTAssertEqual(OCRJobParallelism.recommendedWorkerCount(activeProcessorCount: 18), 4)
+        XCTAssertEqual(OCRJobParallelism.recommendedWorkerCount(activeProcessorCount: 8), 2)
         XCTAssertEqual(OCRJobParallelism.recommendedWorkerCount(activeProcessorCount: 4), 2)
         XCTAssertEqual(OCRJobParallelism.recommendedWorkerCount(activeProcessorCount: 1), 2)
-        XCTAssertEqual(OCRJobParallelism.recommendedWorkerCount(activeProcessorCount: 32), 16)
+        XCTAssertEqual(OCRJobParallelism.recommendedWorkerCount(activeProcessorCount: 32), 8)
+        XCTAssertEqual(OCRJobParallelism.recommendedWorkerCount(activeProcessorCount: 72), 16)
     }
 
     func testAcceptsPositiveParallelismWithinLimit() throws {

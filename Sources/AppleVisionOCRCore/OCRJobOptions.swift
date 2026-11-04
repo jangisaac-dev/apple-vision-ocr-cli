@@ -97,7 +97,8 @@ public struct OCRJobParallelism: Equatable {
     public static func recommendedWorkerCount(
         activeProcessorCount: Int = ProcessInfo.processInfo.activeProcessorCount
     ) -> Int {
-        min(maximumCount, max(2, activeProcessorCount * 2 / 3 - 2))
+        // Unclamped workers outrank a full-tunnel VPN daemon; a quarter of the cores kept HTTPS working (2026-11-05, CURRENT_STATUS.md).
+        min(maximumCount, max(2, activeProcessorCount / 4))
     }
 
     public let count: Int

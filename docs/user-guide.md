@@ -199,7 +199,9 @@ range and the parent merges them in page order, preserving the searchable text
 layer. Note: in-process `--page-parallelism` alone does not speed things up —
 Apple Vision serializes recognition within one process, so `--split-workers` is
 the knob that actually uses multiple cores. On an 18-core machine ~12 workers is
-the sweet spot.
+the throughput sweet spot, but workers run at normal QoS and can stall a
+full-tunnel VPN: if your traffic goes through one, start at the VOCR default (a
+quarter of the cores) and measure before raising it.
 
 If you only need part of a document:
 
