@@ -321,9 +321,11 @@ public final class SplitProcessOCRRunner {
             let stdoutPipe = Pipe()
             let stderrPipe = Pipe()
             let process = Process()
-            // Keep heavy OCR split workers from starving network daemons.
-            process.executableURL = URL(fileURLWithPath: "/usr/sbin/taskpolicy")
-            process.arguments = ["-c", "utility", executableURL.path] + childArguments(
+            // Not `taskpolicy -c utility`: in a macOS 27 test that clamp made split Markdown OCR 9-12x slower
+            // (2026-11-04, see CURRENT_STATUS.md). nice only lowers threads without a QoS class, so it is not a network safeguard.
+            // nice execs in place, so pause/cancel signals still reach the worker pid.
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/nice")
+            process.arguments = ["-n", "10", executableURL.path] + childArguments(
                 for: chunk,
                 inputURL: inputURL,
                 output: output,
