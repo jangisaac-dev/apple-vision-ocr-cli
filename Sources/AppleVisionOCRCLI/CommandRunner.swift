@@ -2,7 +2,7 @@ import Foundation
 import AppleVisionOCRCore
 
 public final class CommandRunner {
-    public static let version = "1.3.1"
+    public static let version = "2.0.0"
 
     private let stdout: (String) -> Void
     private let stderr: (String) -> Void

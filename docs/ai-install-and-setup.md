@@ -6,14 +6,14 @@ that need to install, run, verify, or package Apple Vision OCR without guessing.
 ## Quick Start For Agents
 
 Download the prebuilt release, verify the checksum, remove quarantine, install, and run OCR.
-The commands pin `v1.3.1`; check the latest tag first with
+The commands pin `v2.0.0`; check the latest tag first with
 `gh release view --repo jangisaac-dev/apple-vision-ocr-cli --json tagName --jq .tagName`.
 
 ```bash
 # Stops at the first failed step (download, checksum, install). The subshell keeps your shell open.
 (
   set -euo pipefail
-  V=1.3.1
+  V=2.0.0
   BASE="https://github.com/jangisaac-dev/apple-vision-ocr-cli/releases/download/v$V"
   curl -fLO "$BASE/VOCR-$V-macos-arm64.zip"
   curl -fLO "$BASE/VOCR-$V-macos-arm64.zip.sha256"
@@ -29,7 +29,7 @@ The commands pin `v1.3.1`; check the latest tag first with
 > **Note:** Agents must run `install-vocr-quick-action.sh` directly (non-interactive, needs no Xcode when `VOCR.app` sits next to it). Do NOT run `Install.command`: it waits for an interactive key press.
 
 Portable use without installing (writes nothing to `~/Library` or `~/.local/bin`):
-Run `VOCR-1.3.1-macos-arm64/VOCR.app/Contents/MacOS/apple-vision-ocr` by absolute path.
+Run `VOCR-2.0.0-macos-arm64/VOCR.app/Contents/MacOS/apple-vision-ocr` by absolute path.
 `--split-workers` and all other options work directly from there.
 
 ## Choose An Install Path
@@ -45,7 +45,7 @@ Run `VOCR-1.3.1-macos-arm64/VOCR.app/Contents/MacOS/apple-vision-ocr` by absolut
 > **Symlink note:** The installer creates `~/.local/bin/apple-vision-ocr` as a symlink pointing into `VOCR.app/Contents/MacOS/apple-vision-ocr` so the CLI can locate the bundled layout model at `../Resources/PPDocLayoutV3.mlmodelc`. Copying only the CLI binary elsewhere loses access to the model unless overridden via `export APPLE_VISION_OCR_LAYOUT_MODEL=/path/to/PPDocLayoutV3.mlmodelc`.
 >
 > Installer destination paths can be customized via environment variables:
-> `VOCR_APP_INSTALL_DIR="$HOME/Applications" VOCR_BIN_DIR="$HOME/.local/bin" VOCR-1.3.1-macos-arm64/install-vocr-quick-action.sh`
+> `VOCR_APP_INSTALL_DIR="$HOME/Applications" VOCR_BIN_DIR="$HOME/.local/bin" VOCR-2.0.0-macos-arm64/install-vocr-quick-action.sh`
 > Because `~/.local/bin` may not be in default `PATH`, invoke the CLI using its absolute path `"$HOME/.local/bin/apple-vision-ocr"`.
 
 ## Uninstall

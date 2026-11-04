@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-05
+
 ### Added
 
 - Layout-aware Markdown output: CLI flags `--md-only` (writes `<input>.md`) and `--md-output PATH` (writes Markdown to PATH). Exclusive with PDF and TXT options (`--output`, `--txt`, `--txt-only`, `--txt-output`, `--page-breaks`). Structures paper titles as `# `, section headings as `## `, page markers (`[p. 713]` or `[PDF p. 5]`), body paragraphs (preserving OCR line breaks, `#` escaped as `\#`), tables as Markdown tables (via Apple Vision's `RecognizeDocumentsRequest`), and footnotes (`[^4]` references in the body and definitions collected at document end after `<!-- footnotes -->`). Automatically removes running headers, footers, page numbers, and logos (e.g. KCI watermarks), and recovers text from empty regions via re-crop OCR.
@@ -100,7 +102,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `VOCR.app` Finder GUI with menu bar progress, and the `Apple Vision OCR` Finder Quick Action.
 - `--page-parallelism`, `--render-scale`, `--page-range`, and split-worker text OCR.
 
-[Unreleased]: https://github.com/jangisaac-dev/apple-vision-ocr-cli/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/jangisaac-dev/apple-vision-ocr-cli/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/jangisaac-dev/apple-vision-ocr-cli/compare/v1.3.1...v2.0.0
 [1.3.1]: https://github.com/jangisaac-dev/apple-vision-ocr-cli/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/jangisaac-dev/apple-vision-ocr-cli/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/jangisaac-dev/apple-vision-ocr-cli/compare/v1.1.0...v1.2.0
